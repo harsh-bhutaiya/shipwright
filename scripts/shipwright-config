@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# Shipwright settings: scripts/shipwright-config [-C DIR] get|set|path|exclude|summary
+# Plain key=value files; no associative arrays (bash 3.2).
+
+PROJECT_KEYS="docs_mode docs_dir wiki_connector wiki_location plan_approval pr_line_cap observability"
+DEVELOPER_KEYS="commit_push ai_coauthor"
+
+die() { echo "shipwright-config: $*" >&2; exit 2; }
+
+dir=.
+if [ "$1" = "-C" ]; then dir="$2"; shift 2; fi
+[ -d "$dir" ] || die "no such directory: $dir"
+# Main worktree (first porcelain line), so linked worktrees share the main checkout's settings.
+root=$(git -C "$dir" worktree list --porcelain 2>/dev/null | { IFS= read -r l; echo "${l#worktree }"; })
+[ -n "$root" ] || root=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || root=$(cd "$dir" && pwd)
+sw="$root/.shipwright"
+
+file_for() { # key -> conf path
+    case " $PROJECT_KEYS " in *" $1 "*) echo "$sw/project.conf"; return;; esac
+    case " $DEVELOPER_KEYS " in *" $1 "*) echo "$sw/developer.conf"; return;; esac
+    die "unknown key: $1"
+}
+
+default_for() {
+    case "$1" in
+        docs_dir) echo docs;; plan_approval) echo review;;
+        commit_push) echo not-allowed;; ai_coauthor) echo ask;;
+    esac
+}
+
+allowed() { # key value
+    case "$1" in
+        docs_mode) case "$2" in in-repo|local|shared-tool) return 0;; esac;;
+        plan_approval) case "$2" in review|auto) return 0;; esac;;
+        commit_push) case "$2" in allowed|not-allowed) return 0;; esac;;
+        ai_coauthor) case "$2" in yes|no|ask) return 0;; esac;;
+        pr_line_cap) case "$2" in ''|*[!0-9]*|0*) ;; *) return 0;; esac;;
+        *) return 0;;
+    esac
+    return 1
+}
+
+trim() { local s="$1"; s="${s//$'\r'/}"; s="${s#"${s%%[![:space:]]*}"}"; echo "${s%"${s##*[![:space:]]}"}"; }
+
+read_conf() { # file key -> value, last occurrence wins; empty if missing
+    local f="$1" key="$2" line k v val=""
+    [ -f "$f" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in *=*) ;; *) continue;; esac
+        k=$(trim "${line%%=*}"); v=$(trim "${line#*=}")
+        [ "$k" = "$key" ] && val="$v"
+    done < "$f"
+    echo "$val"
+}
+
+get_value() {
+    local f v; f=$(file_for "$1") || exit 2
+    v=$(read_conf "$f" "$1")
+    if [ -n "$v" ]; then echo "$v"; else default_for "$1"; fi
+}
+
+# Raw stored value (no default), for logic that must tell "unset" apart.
+raw_value() { read_conf "$(file_for "$1")" "$1"; }
+
+set_value() { # key value: rewrite the file, replacing every old line for the key
+    local key="$1" val="$2" f line k tmp
+    f=$(file_for "$key") || exit 2
+    allowed "$key" "$val" || die "invalid value for $key: $val"
+    mkdir -p "$sw"
+    tmp=$(mktemp "$sw/.conf.XXXXXX") || die "cannot write $sw"
+    if [ -f "$f" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            line="${line//$'\r'/}"
+            k=$(trim "${line%%=*}")
+            case "$line" in *=*) [ "$k" = "$key" ] && continue;; esac
+            printf "%s\n" "$line" >> "$tmp" || { rm -f "$tmp"; die "write failed: $f"; }
+        done < "$f"
+    fi
+    printf "%s\n" "$key=$val" >> "$tmp" || { rm -f "$tmp"; die "write failed: $f"; }
+    mv "$tmp" "$f" || { rm -f "$tmp"; die "write failed: $f"; }
+}
+
+add_exclude() { # line: append to exclude once
+    local ex="$1" line="$2"
+    grep -qxF -- "$line" "$ex" 2>/dev/null && return 0
+    [ -s "$ex" ] && [ -n "$(tail -c1 "$ex")" ] && echo >> "$ex"
+    echo "$line" >> "$ex"
+}
+
+do_exclude() {
+    local gd ex mode ddir
+    gd=$(git -C "$dir" rev-parse --git-common-dir 2>/dev/null) || return 0
+    case "$gd" in /*) ;; *) gd="$(cd "$dir" && pwd)/$gd";; esac
+    mkdir -p "$gd/info"; ex="$gd/info/exclude"
+    add_exclude "$ex" "/.shipwright/developer.conf"
+    add_exclude "$ex" "/.shipwright/work/"
+    mode=$(raw_value docs_mode)
+    [ "$mode" = "in-repo" ] || add_exclude "$ex" "/.shipwright/project.conf"
+    if [ "$mode" = "local" ]; then
+        ddir=$(get_value docs_dir)
+        case "$ddir" in ""|.|./|/*) return 0;; esac
+        ddir="${ddir%/}"
+        if [ -n "$(git -C "$root" ls-files -- "$ddir" 2>/dev/null)" ]; then
+            echo "shipwright-config: not excluding $ddir/ because it has tracked files; Shipwright's docs will be visible to git there" >&2
+            return 0
+        fi
+        add_exclude "$ex" "/$ddir/"
+    fi
+}
+
+case "$1" in
+    get) [ $# -eq 2 ] || die "usage: get <key>"; get_value "$2";;
+    set) [ $# -eq 3 ] || die "usage: set <key> <value>"; set_value "$2" "$3";;
+    path) case "$2" in
+            project) echo "$sw/project.conf";; developer) echo "$sw/developer.conf";;
+            work) echo "$sw/work";; *) die "usage: path project|developer|work";;
+          esac;;
+    exclude) do_exclude;;
+    summary) out=""
+        for k in $PROJECT_KEYS $DEVELOPER_KEYS; do out="${out:+$out; }$k=$(get_value "$k")"; done
+        echo "$out";;
+    *) die "usage: shipwright-config [-C DIR] get|set|path|exclude|summary";;
+esac

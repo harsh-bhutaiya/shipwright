@@ -1,0 +1,280 @@
+#!/usr/bin/env bash
+# PreToolUse hook (spec 2.7). Bash: denies git commands that change the
+# developer's visible git state (commits, pushes, staging, branches) unless
+# their commit_push setting is "allowed". Consent (.shipwright/developer.conf)
+# is the developer's alone, so whatever the setting it also denies a Bash
+# command that names developer.conf, sets commit_push or asks for the
+# developer.conf path, and Edit/Write/MultiEdit/NotebookEdit on any file of
+# that name or inside this plugin. Prints one deny decision or nothing, and
+# always exits 0. bash 3.2; no jq.
+# run-hook.cmd falls back to zsh when bash is missing; ksh mode splits words like bash.
+[ -n "${ZSH_VERSION:-}" ] && emulate ksh
+LC_ALL=C; set -f # no globbing anywhere: command text is split unquoted
+
+# Never wait on a terminal; empty or non-JSON input means no decision.
+[ -t 0 ] && exit 0
+IFS= read -r -d '' input
+case $input in *'{'*) ;; *) exit 0;; esac
+
+# Word splitting, case tests, short-end trims and array joins only: in bash
+# 3.2, ${x%%pat*}, ${x#*pat} and ${x//pat/rep} with a far match, a shift loop
+# over $#, trimming one character at a time and growing a string piece by
+# piece all go quadratic on long input.
+odd_tail() { # text -> 0 when it ends in an odd run of backslashes
+    local IFS='\' f e=0 k=0
+    case $1 in *\\) ;; *) return 1;; esac
+    # Sentinels at both ends: bash and zsh then split alike, and a run of n
+    # backslashes leaves n-1 empty fields before the closing x.
+    for f in x$1x; do if [ -z "$f" ]; then e=$((e+1)); else k=$e; e=0; fi; done
+    [ $((k % 2)) -eq 0 ]
+}
+
+json_str() { # key -> REPLY: unescaped string value of the first "key": "..." in $input
+    local IFS='"' f v state=key c first=1 lit= n=0 m=0
+    local -a raw parts
+    REPLY=
+    # Fields between quotes: the key, a lone colon, then the value up to the
+    # first quote that does not follow an odd run of backslashes.
+    for f in $input; do
+        case $state in
+            key) [ "$f" = "$1" ] && state=colon;;
+            colon) case $f in *:*:*|*[![:space:]:]*) state=key;; *:*) state=value;; *) state=key;; esac;;
+            value) raw[m]=$f; m=$((m+1))
+                odd_tail "$f" || { state=done; break; }
+                raw[m]='"'; m=$((m+1));;
+        esac
+    done
+    [ "$state" = done ] || return 1
+    IFS=; v="${raw[*]}"
+    # Split on backslashes: each field after the first starts with an escaped
+    # character, except after "\\", whose second backslash was the escaped one.
+    IFS='\'
+    for f in $v; do
+        c=
+        if [ -n "$first" ]; then first=
+        elif [ -n "$lit" ]; then lit=
+        elif [ -z "$f" ]; then parts[n]='\'; n=$((n+1)); lit=1; continue
+        else
+            c=${f:0:1}; f=${f:1}
+            case $c in n) c=$'\n';; t) c=$'\t';; esac # other escapes keep their character: right for \" \\ \/, harmless for the rest
+        fi
+        parts[n]=$c$f; n=$((n+1))
+    done
+    IFS=; REPLY="${parts[*]}"
+}
+
+join_continued() { # $cmd with each backslash-newline turned into a space
+    local IFS=$'\n' line n=0
+    local -a out
+    for line in $cmd; do # one assignment per element: rewriting one walks bash 3.2's array list
+        case $line in *\\) odd_tail "$line" && { out[n]="${line%\\} "; n=$((n+1)); continue; };; esac # \\ is a literal backslash
+        out[n]=$line$'\n'; n=$((n+1))
+    done
+    IFS=; cmd="${out[*]}"
+}
+
+# Subcommands denied in every form when commit_push is off. One whole-string
+# ERE, so wrappers, quoted or escaped option values and scripts in quotes
+# (bash -c "git tag v1") all match. shortcut: prose such as echo "git reset"
+# is denied too; fails safe, parse the shell if it bites.
+q="'"
+word='([^[:space:];&|()`"'$q'\]|\\.|"([^"\]|\\.)*"|'$q'[^'$q']*'$q'|\$\([^)]*\)|`[^`]*`)+'
+opt='[[:blank:]]+((-C|-c|--git-dir|--work-tree|--namespace|--config-env)[[:blank:]]+'$word'|-'$word')'
+always='commit|push|add|tag|merge|rebase|cherry-pick|revert|reset|stash|pull|am|rm|mv|checkout|switch|restore|clean|symbolic-ref'
+re='(^|[^[:alnum:]_])[Gg][Ii][Tt]('$opt')*[[:blank:]]+('$always')([^[:alnum:]_-]|$)' # GIT runs git on case-insensitive disks
+
+sw_ref() { # word -> 0 when it is refs/shipwright/<name>, name [A-Za-z0-9._/-]+ without ..
+    case $1 in refs/shipwright/?*) ;; *) return 1;; esac
+    case ${1#refs/shipwright/} in *[!A-Za-z0-9._/-]*|*..*) return 1;; esac
+}
+noopt() { # words -> 0 when there is at least one and none is an option
+    local a
+    [ $# -gt 0 ] || return 1
+    for a; do case $a in -*) return 1;; esac; done
+}
+read_only() { # subcommand -> 0 when it reads in every form
+    case $1 in
+        status|diff|log|show|check-ignore|rev-parse|ls-files|ls-tree|cat-file|blame|shortlog|describe|for-each-ref|merge-base|name-rev) ;;
+        version|help|rev-list|show-ref) ;;
+        *) return 1;;
+    esac
+}
+no_output() { # words -> 0 when none is --output, which writes any file (.git/refs too)
+    local a
+    for a; do case $a in --outp*) return 1;; esac; done
+}
+
+# When commit_push is off, a git call passes only if it is read-only or one of
+# the exact scratch forms below; anything unrecognised before or after the
+# subcommand denies.
+git_denied() { # words of one segment -> 0 when they hold a git call outside the allowlist
+    local idx= tmp= sub= a git= xa= cw= o= i=0 st=
+    for a; do # NAME=value words, wrappers and their options: anything before git
+        i=$((i+1))
+        case $a in
+            GIT_INDEX_FILE=*) idx=${a#*=}; continue;;
+            [Gg][Ii][Tt]_*=*) return 0;; # other git variables inject config or name programs
+            *=*) continue;;
+            [Gg][Ii][Tt]|*/[Gg][Ii][Tt]|\\[Gg][Ii][Tt]) git=1; break;; # any case: case-insensitive disks; \git skips aliases
+            [.][Gg][Ii][Tt]|*[/\\][.][Gg][Ii][Tt]) return 0;; # a path into .git, e.g. cd .git
+            [Gg][Ii][Tt]_*) case $a in *[!A-Za-z0-9_]*) ;; *) return 0;; esac;; # export GIT_X
+            xargs|*/xargs) xa=1;;
+        esac
+        # A dashed binary (git-core/git-commit) as the command or by path: only read-only ones.
+        case ${a##*[/\\]} in [Gg][Ii][Tt]-?*)
+            case $a in */*|*\\*) cw=;; esac
+            if [ -z "$cw" ]; then
+                sub=${a##*[/\\]}; sub=${sub#????}; sub=${sub%.[eE][xX][eE]}; shift $i
+                read_only "$sub" && no_output "$@" && return 1
+                return 0
+            fi;;
+        esac
+        cw=1
+    done
+    [ -n "$git" ] || return 1
+    shift $i; i=0
+    if [ $# -eq 0 ]; then [ -n "$xa" ]; return; fi # bare git prints its usage, unless xargs feeds it
+    # A temporary index: an absolute path, nothing shell-expanded, not inside a .git directory.
+    case $idx in /*) case $idx in *[\\\"\'\$]*|*/[.][Gg][Ii][Tt]/*|*.[Gg][Ii][Tt]*/[Ii][Nn][Dd][Ee][Xx]) ;; *) tmp=1;; esac;; esac
+    for a; do # git's own options, before the subcommand; o: this word is an option's value
+        i=$((i+1))
+        if [ -n "$o" ]; then o=
+        else case $a in
+                -C|--git-dir|--work-tree) o=1;;
+                --git-dir=?*|--work-tree=?*|--no-pager|-P|--no-optional-locks) ;;
+                --version) return 1;;
+                -*) return 0;; # unknown, and -c: config values can name programs to run
+                *) sub=$a; break;;
+            esac
+        fi
+    done
+    [ -n "$sub" ] || return 0
+    shift $i
+    no_output "$@" || return 0
+    read_only "$sub" && return 1
+    # xargs adds words the hook cannot see, and $, backquotes and braces expand
+    # into words it cannot see either: only the read-only commands above pass.
+    [ -n "$xa$dyn" ] && return 0
+    case $sub in
+        grep) for a; do case $a in --op*) return 0;; --*) ;; -*O*) return 0;; esac; done; return 1;; # -O runs a pager command
+        ls-remote) for a; do case $a in --u*) return 0;; esac; done; return 1;; # --upload-pack runs a program
+        clone) for a; do case $a in --u*|--co*) return 0;; --*) ;; -*[uc]*) return 0;; esac; done; return 1;; # same, and -c/--config
+        init) for a; do case $a in --se*|--b*|--t*) return 0;; esac; done; return 1;; # moves or rewrites an existing .git; templates add hooks
+        remote) case $# in # list, -v, show <name>, get-url <name>
+                0) return 1;;
+                1) case $1 in -v|--verbose) return 1;; esac;;
+                2) case $1 in show|get-url) noopt "$2" && return 1;; esac;;
+            esac; return 0;;
+        reflog) for a; do case $a in expire|delete|drop) return 0;; esac; done; return 1;;
+        config) for a; do case $a in # read forms only
+                --add|--unset|--unset-all|--replace-all|--rename-section|--remove-section|-e|--edit) return 0;;
+                set|unset|rename-section|remove-section|edit) return 0;;
+                --get|--get-all|--get-regexp|--get-urlmatch|--get-color|--get-colorbool|--list|-l|get|list) st=1;;
+            esac; done
+            [ -n "$st" ] && return 1; return 0;;
+        branch) for a; do case $a in # listing only
+                -a|-r|-l|-v|-vv|-q|--all|--remotes|--list|--verbose|--quiet|--show-current|--color*|--no-color) ;;
+                --sort=*|--format=*|--contains*|--no-contains*|--merged*|--no-merged*|--points-at*|--column*|--no-column) ;;
+                *) return 0;;
+            esac; done; return 1;;
+        worktree) case $1 in
+                list) return 1;;
+                add) [ "$2" = --detach ] && { shift 2; [ $# -le 2 ] && noopt "$@" && return 1; };;
+                remove) shift; [ "$1" = --force ] && shift; [ $# -eq 1 ] && noopt "$1" && return 1;;
+            esac; return 0;;
+        update-ref) case $1 in
+                -d) [ $# -eq 2 ] && sw_ref "$2" && return 1;;
+                *) [ $# -eq 2 ] && sw_ref "$1" && noopt "$2" && return 1;;
+            esac; return 0;;
+        commit-tree) st=tree # <tree> [-p <rev>]... [-m <message words>]
+            for a; do case $st in
+                tree|parent) case $a in -*) return 0;; esac; st=opt;;
+                opt) case $a in -p) st=parent;; -m) st=msg;; *) return 0;; esac;;
+            esac; done
+            case $st in opt|msg) return 1;; esac; return 0;;
+        write-tree) [ $# -eq 0 ] && return 1; return 0;;
+        read-tree) [ -n "$tmp" ] && [ $# -eq 1 ] && noopt "$1" && return 1; return 0;;
+        update-index) [ -n "$tmp" ] && [ "$1" = --add ] && [ "$2" = --remove ] || return 0
+            shift 2; [ "$1" = -- ] && { shift; [ $# -gt 0 ] && return 1; return 0; }
+            for a; do case $a in -*) return 0;; esac; done
+            [ $# -gt 0 ] && return 1; return 0;;
+        apply) [ $# -eq 1 ] && noopt "$1" && return 1; return 0;; # any option denies
+        fetch) st=0 # [<remote> [<branch>]], no colon anywhere, options --prune, --quiet, -q only
+            for a; do case $a in --prune|--quiet|-q) ;; -*|*:*) return 0;; *) st=$((st+1));; esac; done
+            [ $st -le 2 ] && return 1; return 0;;
+    esac
+    return 0
+}
+scan() { # $text -> 0 when one of its segments holds a git call outside the allowlist
+    local seg IFS=$';&|()`\n'
+    for seg in $text; do # only segments naming git can matter; skipping the rest keeps separator runs fast
+        case $seg in *[Gg][Ii][Tt]*) IFS=$' \t'; git_denied $seg && return 0;; esac
+    done
+    return 1
+}
+unquote() { # text -> REPLY: text without quotes, \, $, braces, brackets or commas, so escapes,
+    local IFS=$'"\'\\${},[]' # {git,} and g[i]t cannot hide a word
+    set -- $1; IFS=; REPLY="$*"
+}
+
+deny() { # JSON-escaped reason
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$1"
+    exit 0
+}
+jesc() { # text placeholder -> REPLY: text JSON-escaped, or the placeholder if it holds control characters
+    case $1 in *[[:cntrl:]]*) REPLY=$2; return;; esac
+    REPLY=${1//\\/\\\\}; REPLY=${REPLY//\"/\\\"}
+}
+consent="Shipwright: .shipwright/developer.conf holds the developer's own consent and can only be changed by the developer."
+case $0 in */*|*\\*) dir=${0%[/\\]*};; *) dir=.;; esac
+
+if ! json_str command; then # a file-editing tool
+    json_str file_path || json_str notebook_path || exit 0
+    path=$REPLY
+    # Final component only, any case: ./, .. and case-insensitive filesystems reach the same file.
+    case ${path##*[/\\]} in [dD][eE][vV][eE][lL][oO][pP][eE][rR].[cC][oO][nN][fF]) deny "$consent";; esac
+    if cd "$dir/.." 2>/dev/null; then # the running plugin, as spelled logically and physically
+        case $path in "$PWD"/*) deny "Shipwright: the plugin's own files cannot be changed from inside a session.";; esac
+        cd -P . && case $path in "$PWD"/*) deny "Shipwright: the plugin's own files cannot be changed from inside a session.";; esac
+    fi
+    exit 0
+fi
+cmd=$REPLY; raw=$cmd
+case $cmd in *\\$'\n'*) join_continued;; esac
+# A copy with quotes, backslashes and $ dropped, so a quoted or escaped word
+# stays in its git call; the checks below read both.
+unquote "$cmd"; unq=$REPLY
+both=$cmd$'\n'$unq
+# Any mention, read or write: the agent reads consent through shipwright-config get or the Read tool.
+case $both in *[dD][eE][vV][eE][lL][oO][pP][eE][rR].[cC][oO][nN][fF]*) deny "$consent";; esac
+# Nor may it grant consent, here or in another repo; setting other keys stays allowed for onboarding.
+cfg_re=$'shipwright-config[^;&|\n]*[[:blank:]\'"](set[[:blank:]]+[\'"]?commit_push|path[[:blank:]]+[\'"]?developer)([^[:alnum:]_]|$)'
+[[ $both =~ $cfg_re ]] && deny "$consent"
+
+dyn=; case $cmd in *[\$\`{]*) dyn=1;; esac # expansions: see git_denied
+hit=
+if [[ $both =~ $re ]]; then hit=1
+else
+    # GIT_CONFIG_* injects config as -c does; a .git/ path writes refs or the index directly.
+    case $both in *[Gg][Ii][Tt]_[Cc][Oo][Nn][Ff][Ii][Gg]*|*[.][Gg][Ii][Tt][/\\]*) hit=1;; esac
+fi
+# Every copy must pass, so a quoted value cannot fake another shape, and the
+# unjoined text too, because a continuation followed by an empty line ends the
+# command. $text, not an argument, so the calls in scan do not copy it.
+if [ -z "$hit" ]; then
+    text=$unq; scan && hit=1
+    [ -n "$hit" ] || [ "$cmd" = "$unq" ] || { text=$cmd; scan && hit=1; }
+    if [ -z "$hit" ] && [ "$raw" != "$cmd" ]; then
+        text=$raw; scan && hit=1
+        [ -n "$hit" ] || { unquote "$raw"; text=$REPLY; scan && hit=1; }
+    fi
+fi
+[ -n "$hit" ] || exit 0
+
+json_str cwd; cwd=${REPLY:-.}
+cfg="$dir/../scripts/shipwright-config"
+[ "$("${BASH:-bash}" "$cfg" -C "$cwd" get commit_push 2>/dev/null)" = allowed ] && exit 0
+repo=$("${BASH:-bash}" "$cfg" -C "$cwd" path developer 2>/dev/null); repo=${repo%/.shipwright/developer.conf}
+jesc "${repo:-$cwd}" "<repo root>"; repo=$REPLY
+if cd "$dir/.." 2>/dev/null; then jesc "$PWD" "<plugin root>"; else REPLY="<plugin root>"; fi; root=$REPLY
+deny "Shipwright blocked this git command: it changes the developer's visible git state (staging, commits, pushes, branches, HEAD, .git), and commit consent is off. Do not retry it in another form. Leave changes in the working tree and hand over the files to stage and a commit message instead. Only the developer can allow it, by running this in their own terminal (outside Claude Code): \\\"$root/scripts/shipwright-config\\\" -C \\\"$repo\\\" set commit_push allowed"

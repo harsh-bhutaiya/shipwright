@@ -1,0 +1,15 @@
+{
+  "name": "shipwright",
+  "description": "Team marketplace for Shipwright.",
+  "owner": {
+    "name": "Harsh Bhutaiya"
+  },
+  "plugins": [
+    {
+      "name": "shipwright",
+      "description": "Team dev workflow; a fork of superpowers with per-project settings and a commit-consent git guard.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

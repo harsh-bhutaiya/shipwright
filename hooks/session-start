@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# SessionStart hook for the shipwright plugin: injects using-shipwright and a
+# one-line summary of the project's Shipwright settings.
+
+set -euo pipefail
+
+# Plugin root without dirname: a SessionStart hook can run with a broken PATH
+# (anthropics/claude-code#43127). $0 may use \ (run-hook.cmd on Windows).
+case "$0" in
+  */*|*\\*) SCRIPT_DIR="${0%[/\\]*}" ;;
+  *) SCRIPT_DIR="." ;;
+esac
+PLUGIN_ROOT="${SCRIPT_DIR}/.."
+
+# Builtin reads only (no cat). read returns 1 at EOF, hence || true.
+skill_md="${PLUGIN_ROOT}/skills/using-shipwright/SKILL.md"
+skill_content="Error reading using-shipwright skill"
+if [ -r "$skill_md" ]; then
+  IFS= read -r -d '' skill_content < "$skill_md" || true
+  while [[ $skill_content == *$'\n' ]]; do
+    skill_content="${skill_content%$'\n'}"
+  done
+fi
+
+# Project dir: "cwd" from the hook's stdin JSON, else $CLAUDE_PROJECT_DIR.
+# Stdin is only read when it is not a terminal.
+input=""
+if [ ! -t 0 ]; then IFS= read -r -d '' input || true; fi
+project_dir="${CLAUDE_PROJECT_DIR:-}"
+case "$input" in
+  *'"cwd"'*)
+    rest="${input#*\"cwd\"}"
+    rest="${rest#*:}"
+    rest="${rest#*\"}"
+    # shortcut: JSON escapes in cwd (\\ on Windows) are not decoded; the settings call then falls back to "unavailable".
+    if [ -n "${rest%%\"*}" ]; then project_dir="${rest%%\"*}"; fi
+    ;;
+esac
+
+# The one subprocess on the startup path. "$BASH" avoids a PATH lookup for the shebang.
+summary="unavailable"
+if [ -n "$project_dir" ] && [ -r "${PLUGIN_ROOT}/scripts/shipwright-config" ]; then
+  summary="$("${BASH:-bash}" "${PLUGIN_ROOT}/scripts/shipwright-config" -C "$project_dir" summary 2>/dev/null)" || summary="unavailable"
+  [ -n "$summary" ] || summary="unavailable"
+fi
+
+extra="Shipwright settings for this project: ${summary}"
+case "$summary" in
+  docs_mode=\;*) extra="${extra}"$'\n'"This project is not onboarded yet. Before planning work here, run the shipwright:onboarding skill." ;;
+esac
+case "$summary" in
+  *commit_push=allowed*) ;;
+  *) extra="${extra}"$'\n'"Commit consent is off for this developer. Skip other skills' steps that commit, push, merge, stash or create or switch branches, and leave all changes in the working tree. Where a skill reviews a commit range, review the working-tree diff (\`git diff\` plus untracked files) instead. At the end, hand over the files to stage and a commit message for each branch. A Shipwright denial is final: do not retry it in another form." ;;
+esac
+
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    escaped="$s"
+}
+
+escape_for_json "${skill_content}"$'\n\n'"${extra}"
+session_context="<EXTREMELY_IMPORTANT>\nYou have shipwright.\n\n**Below is the full content of your 'shipwright:using-shipwright' skill - your introduction to using skills. For all other skills, use the 'Skill' tool:**\n\n${escaped}\n</EXTREMELY_IMPORTANT>"
+
+# printf, not a heredoc (bash 5.3 hang, superpowers#571); EPIPE absorbed (#1612).
+emit_json() {
+  trap '' PIPE
+  # shellcheck disable=SC2059 # every caller passes a literal format string
+  printf "$@" 2>/dev/null || true
+}
+
+if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
+  emit_json '{\n  "additional_context": "%s"\n}\n' "$session_context"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${COPILOT_CLI:-}" ]; then
+  emit_json '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$session_context"
+else
+  emit_json '{\n  "additionalContext": "%s"\n}\n' "$session_context"
+fi
+
+exit 0
