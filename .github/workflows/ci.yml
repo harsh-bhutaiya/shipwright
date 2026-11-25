@@ -1,0 +1,173 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: Ubuntu
+            key: tests-ubuntu
+          - os: macos-latest
+            label: macOS
+            key: tests-macos
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Scripts must run on macOS's stock bash 3.2, not Homebrew's bash 5.
+      - name: Use the system bash 3.2
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p "$RUNNER_TEMP/bash32"
+          ln -sf /bin/bash "$RUNNER_TEMP/bash32/bash"
+          echo "$RUNNER_TEMP/bash32" >> "$GITHUB_PATH"
+
+      - name: Run tests
+        id: tests
+        run: |
+          set +e
+          bash tests/run-all.sh > run-all.log 2>&1
+          code=$?
+          cat run-all.log
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Write result
+        if: always()
+        env:
+          LABEL: ${{ matrix.label }}
+          KEY: ${{ matrix.key }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CODE: ${{ steps.tests.outputs.code }}
+        run: |
+          mkdir -p ci-result
+          pass=$(grep -c '^PASS ' run-all.log 2>/dev/null || true)
+          fail=$(grep -c '^FAIL ' run-all.log 2>/dev/null || true)
+          pass=${pass:-0}; fail=${fail:-0}; total=$((pass + fail))
+          ver=$(bash -c 'echo "${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"')
+          if [ "$CODE" = "0" ]; then
+            status=pass; details="$pass/$total test files pass"
+          elif [ -z "$CODE" ]; then
+            status=fail; details="tests did not run"
+          else
+            status=fail; details="$fail of $total test files failed"
+          fi
+          {
+            echo "check=Tests"
+            echo "runner=$LABEL, bash $ver"
+            echo "status=$status"
+            echo "details=$details"
+          } > "ci-result/$KEY.txt"
+          if [ "$status" = fail ] && [ -f run-all.log ]; then
+            grep -A60 '^FAIL ' run-all.log | head -n 300 > "ci-result/$KEY.log" || true
+          fi
+          echo "$PR_NUMBER" > ci-result/pr.txt
+
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-result-${{ matrix.key }}
+          path: ci-result/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Fail if tests failed
+        if: always() && steps.tests.outputs.code != '0'
+        run: exit 1
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    env:
+      # The same version the PyCharm Shell Script plugin bundles, so CI and the IDE agree.
+      SC_VERSION: v0.10.0
+      SC_SHA256: 6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install ShellCheck
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/sc.tar.xz" \
+            "https://github.com/koalaman/shellcheck/releases/download/$SC_VERSION/shellcheck-$SC_VERSION.linux.x86_64.tar.xz"
+          echo "$SC_SHA256  $RUNNER_TEMP/sc.tar.xz" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/sc.tar.xz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/shellcheck-$SC_VERSION" >> "$GITHUB_PATH"
+
+      - name: Run ShellCheck
+        id: lint
+        run: |
+          set +e
+          # Shell files: *.sh, plus extensionless files with a sh/bash shebang.
+          git ls-files | while IFS= read -r f; do
+            case "$f" in
+              *.sh) echo "$f" ;;
+              *.cmd|*.md|*.json|*.yaml|*.yml|*.html|*.js|*.cjs|*.css) ;;
+              *) head -c 40 "$f" 2>/dev/null | grep -q -E '^#!.*(ba)?sh' && echo "$f" ;;
+            esac
+          done > shell-files.txt
+          tr '\n' '\0' < shell-files.txt | xargs -0 shellcheck -f gcc > shellcheck.txt
+          code=$?
+          cat shellcheck.txt
+          # Show each finding as an annotation on the PR diff.
+          awk -F: '{ m = $0; sub(/^[^:]*:[^:]*:[^:]*: /, "", m); printf "::warning file=%s,line=%s,col=%s::%s\n", $1, $2, $3, m }' shellcheck.txt
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Write result
+        if: always()
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CODE: ${{ steps.lint.outputs.code }}
+        run: |
+          mkdir -p ci-result
+          files=$(grep -c . shell-files.txt 2>/dev/null || true)
+          found=$(grep -c . shellcheck.txt 2>/dev/null || true)
+          files=${files:-0}; found=${found:-0}
+          if [ "$CODE" = "0" ] && [ "$found" -eq 0 ]; then
+            status=pass
+          else
+            status=fail
+          fi
+          if [ -z "$CODE" ]; then details="ShellCheck did not run"; else details="$found findings in $files files"; fi
+          {
+            echo "check=ShellCheck $SC_VERSION"
+            echo "runner=Ubuntu"
+            echo "status=$status"
+            echo "details=$details"
+          } > ci-result/shellcheck.txt
+          if [ "$status" = fail ] && [ -f shellcheck.txt ]; then
+            head -n 200 shellcheck.txt > ci-result/shellcheck.log
+          fi
+          echo "$PR_NUMBER" > ci-result/pr.txt
+
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-result-shellcheck
+          path: ci-result/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Fail if ShellCheck failed
+        if: always() && steps.lint.outputs.code != '0'
+        run: exit 1
