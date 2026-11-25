@@ -5,7 +5,7 @@ The single place to see where the Shipwright build stands: decisions, open quest
 ## Status
 
 **Phase:** v0.1.0 released (Milestone 1); building v0.2 (Tasks 6-13)
-**Next:** Owner pushes the repo; then plan Tasks 6-13
+**Next:** Plan Tasks 6-13 (repo is public at `harsh-bhutaiya/shipwright`)
 
 ## Decisions
 
@@ -29,7 +29,7 @@ The single place to see where the Shipwright build stands: decisions, open quest
 | 2026-11-24 | **Mid-build decisions: split.** Ask about everything during requirements and planning. During the build, stop only for issues that change what gets built or touch a risky category; decide and record everything else, then list it at the end | User's pick (Q10) |
 | 2026-11-24 | **Databases:** never write to real or shared ones (production, staging, shared dev). Those are read-only, through a read-only user or connector only, and never with the project's `.env` credentials. Local and test databases may be written | User's pick (Q11) |
 | 2026-11-24 | **Verification loop:** after implementing, Shipwright tests the real thing, reads the logs, and proves every decided case. On failure it fixes and re-checks the whole checklist. After 3 failed attempts on the same problem it stops and escalates with the evidence | User's requirement (design §2.10) and pick (Q12) |
-| 2026-11-25 | **Personal project:** install from the local folder marketplace; GitHub push optional | Owner's decision |
+| 2026-11-25 | **Personal project, published publicly** at `harsh-bhutaiya/shipwright`. Only the owner pushes; others fork and open PRs. The `protect-main` ruleset blocks force-push and deletion and requires a PR (0 approvals), with the owner on the bypass list. Secret scanning, push protection and private vulnerability reporting are on | Owner's decision; the owner also merges their own changes through PRs |
 | 2026-11-25 | **Licence: MIT.** Superpowers' notice is kept and the owner's copyright line added. `.idea/` and `.DS_Store` are git-ignored, and `.idea/` is untracked | Owner's decision |
 | 2026-11-24 | Name: **Shipwright** | Chosen from a shortlist; Keel was the runner-up |
 | 2026-11-25 | **Release v0.1.0 = Milestone 1; Tasks 6-13 in v0.2+** | The user wants to publish today; Milestone 1 (forked skills, settings script, git guard, session-start hook, onboarding) is complete and reviewed |
@@ -101,3 +101,4 @@ Answer one at a time, in this order. Full context is in `docs/superpowers/specs/
   - Milestone 1 built and reviewed (Tasks 1-5).
   - Wrote the README (install, settings, consent, guard and its known limits), CHANGELOG and CLAUDE.md note.
   - Decided to release v0.1.0 as Milestone 1 only; Tasks 6-13 move to v0.2+.
+  - Published the repo publicly at `harsh-bhutaiya/shipwright` and added the `protect-main` ruleset, secret scanning, push protection and private vulnerability reporting.
