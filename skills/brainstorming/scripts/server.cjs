@@ -71,7 +71,7 @@ function decodeFrame(buffer) {
   const totalLen = dataOffset + payloadLen;
   if (buffer.length < totalLen) return null;
 
-  const mask = buffer.slice(maskOffset, dataOffset);
+  const mask = buffer.subarray(maskOffset, dataOffset);
   const data = Buffer.alloc(payloadLen);
   for (let i = 0; i < payloadLen; i++) {
     data[i] = buffer[dataOffset + i] ^ mask[i % 4];
@@ -114,6 +114,8 @@ let ownerPid = process.env.BRAINSTORM_OWNER_PID ? Number(process.env.BRAINSTORM_
 // same key and an already-open tab's cookie still validates.
 const TOKEN_FILE = process.env.BRAINSTORM_TOKEN_FILE || null;
 function generateToken() {
+  // PyCharm types Buffer#toString as zero-argument; Node's takes an encoding.
+  // noinspection JSCheckFunctionSignatures
   return crypto.randomBytes(32).toString('hex');
 }
 
@@ -152,15 +154,13 @@ const MIME_TYPES = {
 
 function waitingPage() {
   return renderBranding(`<!DOCTYPE html>
-<html>
+<html lang="en">
 <head><meta charset="utf-8"><title>Brainstorm Companion</title>
 <style>
 body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
 h1 { color: #333; } p { color: #666; }
 .brand { display: flex; align-items: center; min-width: 0; overflow: hidden; margin-bottom: 1.5rem; color: #666; font-size: 0.9rem; line-height: 1; }
-.brand a { color: inherit; text-decoration: none; display: flex; align-items: center; gap: 0.5rem; min-width: 0; max-width: 100%; line-height: 1; }
 .brand-copy { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1; transform: translateY(-1px); }
-.brand-logo { display: block; height: 1em; width: auto; max-width: 180px; filter: invert(1); }
 </style>
 </head>
 <body><!-- BRANDING --><h1>Brainstorm Companion</h1>
@@ -168,7 +168,7 @@ h1 { color: #333; } p { color: #666; }
 }
 
 const FORBIDDEN_PAGE = `<!DOCTYPE html>
-<html>
+<html lang="en">
 <head><meta charset="utf-8"><title>Session key required</title>
 <style>body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
 h1 { color: #333; } p { color: #666; } code { background: #f0f0f0; padding: 0.1em 0.3em; border-radius: 4px; }</style>
@@ -180,7 +180,7 @@ h1 { color: #333; } p { color: #666; } code { background: #f0f0f0; padding: 0.1e
 function bootstrapPage(key) {
   const jsonKey = JSON.stringify(String(key));
   return `<!DOCTYPE html>
-<html>
+<html lang="en">
 <head><meta charset="utf-8"><title>Opening Brainstorm Companion</title></head>
 <body>
 <script>
@@ -234,6 +234,8 @@ function urlHostForHttp(host) {
 }
 
 function companionUrl() {
+  // The companion is a plain-HTTP server on the developer's own machine; the session key, not TLS, guards it.
+  // noinspection HttpUrlsUsage
   return 'http://' + urlHostForHttp(URL_HOST) + ':' + PORT + '/?key=' + TOKEN;
 }
 
@@ -286,7 +288,7 @@ function parseCookies(header) {
   return out;
 }
 
-// A request is authorized if it carries the session key as ?key= or as the
+// A request is authorised if it carries the session key as ?key= or as the
 // session cookie. Both are compared in constant time.
 function isAuthorized(req) {
   const q = req.url.indexOf('?');
@@ -298,15 +300,23 @@ function isAuthorized(req) {
     }
   }
   const cookie = parseCookies(req.headers['cookie'])[COOKIE_NAME];
-  if (cookie && timingSafeEqualStr(cookie, TOKEN)) return true;
-  return false;
+  return !!(cookie && timingSafeEqualStr(cookie, TOKEN));
+
 }
 
+/**
+ * @param {string} url
+ * @returns {string}
+ */
 function pathnameOf(url) {
   const q = url.indexOf('?');
   return q >= 0 ? url.slice(0, q) : url;
 }
 
+/**
+ * @param {string} url
+ * @returns {?string}
+ */
 function queryKey(url) {
   const q = url.indexOf('?');
   if (q < 0) return null;
@@ -329,6 +339,8 @@ function isAllowedWebSocketOrigin(req) {
   if (!origin) return true;
   const host = req.headers.host;
   if (!host) return false;
+  // The page is served over plain HTTP (see companionUrl), so its origin is http://.
+  // noinspection HttpUrlsUsage
   return origin === 'http://' + host;
 }
 
@@ -340,7 +352,7 @@ function handleRequest(req, res) {
     res.end(FORBIDDEN_PAGE);
     return;
   }
-  touchActivity(); // only authorized requests count as activity
+  touchActivity(); // only authorised requests count as activity
 
   // Mirror the key into a cookie so same-origin subresources (/files/*) can
   // authenticate after bootstrap. HttpOnly keeps it away from page scripts; the
@@ -420,7 +432,7 @@ function handleUpgrade(req, socket) {
         return;
       }
       if (!result) break;
-      buffer = buffer.slice(result.bytesConsumed);
+      buffer = buffer.subarray(result.bytesConsumed);
 
       switch (result.opcode) {
         case OPCODES.TEXT:
@@ -586,7 +598,7 @@ function startServer() {
     try { process.kill(ownerPid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
   }
 
-  // Periodically exit if the owner process died or we've been idle too long.
+  // Periodically exit if the owner process died, or we've been idle too long.
   const lifecycleCheck = setInterval(() => {
     if (!ownerAlive()) shutdown('owner process exited');
     else if (Date.now() - lastActivity > IDLE_TIMEOUT_MS) shutdown('idle timeout');
@@ -659,15 +671,4 @@ function startServer() {
   server.listen(PORT, HOST, onListen);
 }
 
-if (require.main === module) {
-  startServer();
-}
-
-module.exports = {
-  computeAcceptKey,
-  encodeFrame,
-  decodeFrame,
-  browserLauncherForPlatform,
-  OPCODES,
-  MAX_FRAME_PAYLOAD_BYTES
-};
+startServer();
