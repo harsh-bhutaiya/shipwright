@@ -4,8 +4,8 @@ The single place to see where the Shipwright build stands: decisions, open quest
 
 ## Status
 
-**Phase:** v0.2.0 built (Tasks 6-13); v0.1.0 is public
-**Next:** The owner commits and opens the PRs, then "Try it on a real project"
+**Phase:** v0.2.0 released (Tasks 6-13), with CI and required checks on `main`
+**Next:** Try it on a real project
 
 ## Decisions
 
@@ -65,7 +65,7 @@ Answer one at a time, in this order. Full context is in `docs/superpowers/specs/
 - [x] Open questions Q1-Q8 answered
 - [x] Design approved (2026-11-24)
 - [x] Implementation plan written: `docs/superpowers/plans/2026-11-24-shipwright.md`, 13 tasks in 4 milestones
-- [x] Build (v0.1.0 shipped 2026-11-25; v0.2.0 built, Tasks 6-13)
+- [x] Build (v0.1.0 and v0.2.0 shipped 2026-11-25)
 - [ ] Try it on a real project
 - [ ] Team rollout
 
@@ -105,3 +105,4 @@ Answer one at a time, in this order. Full context is in `docs/superpowers/specs/
   - Published the repo publicly at `harsh-bhutaiya/shipwright` and added the `protect-main` ruleset, secret scanning, push protection and private vulnerability reporting.
   - v0.2.0 built (Tasks 6-13).
   - Added CI: tests on Ubuntu and macOS (bash 3.2), ShellCheck 0.10.0, and a PR results comment.
+  - Fixed `exclude` claiming a developer line under an orphaned marker and resetting the exclude file to 0600; the handover now uses `git checkout -b`.

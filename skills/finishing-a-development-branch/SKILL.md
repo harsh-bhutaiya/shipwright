@@ -83,7 +83,7 @@ Run nothing that changes git state: no `git add`, `git commit`, `git push`, `git
 ```
 # Branch 1 of N: <branch-name> (base: <base>)
 cd <path of the working tree that holds the changes>
-git switch -c <branch-name> <base>    # leave out if already on <branch-name>
+git checkout -b <branch-name> <base>  # leave out if already on <branch-name>
 git add <path> <path>
 git commit -m "<message>"
 ```

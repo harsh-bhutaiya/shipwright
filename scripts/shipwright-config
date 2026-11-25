@@ -80,31 +80,51 @@ set_value() { # key value: rewrite the file, replacing every old line for the ke
     mv "$tmp" "$f" || { rm -f "$tmp"; die "write failed: $f"; }
 }
 
-# Marks the line after it as Shipwright's, so a later exclude can drop it and leave the developer's own lines alone.
-MARK="# shipwright-config exclude manages the next line"
+# "$MARK <line>" sits above each line Shipwright adds and names it, so a later exclude can drop it
+# and leave the developer's own lines alone. OLD_MARK is v0.2.0's form, which did not name its line.
+MARK="# shipwright-config exclude manages:"
+OLD_MARK="# shipwright-config exclude manages the next line"
 
-add_exclude() { # exclude-file line: record it as wanted, append it once after MARK
+add_exclude() { # exclude-file line: record it as wanted, append it once under its MARK
     local ex="$1" line="$2"
     want="$want$line"$'\n'
     grep -qxF -- "$line" "$ex" 2>/dev/null && return 0
     [ -s "$ex" ] && [ -n "$(tail -c1 "$ex")" ] && echo >> "$ex"
-    printf '%s\n%s\n' "$MARK" "$line" >> "$ex"
+    printf '%s %s\n%s\n' "$MARK" "$line" "$line" >> "$ex"
 }
 
-drop_stale() { # exclude-file: remove each MARK-ed line this run did not want, with its MARK
-    local ex="$1" line held='' out='' dropped='' tmp
-    grep -qxF -- "$MARK" "$ex" 2>/dev/null || return 0
+rewrite_keeping_mode() { # file content: replace the file's content atomically, keeping its permissions
+    local f="$1" tmp
+    tmp=$(mktemp "$f.XXXXXX") || die "cannot write $f"
+    { cp -p "$f" "$tmp" && printf '%s' "$2" > "$tmp" && mv "$tmp" "$f"; } || { rm -f "$tmp"; die "write failed: $f"; }
+}
+
+drop_stale() { # exclude-file: drop each marked line this run did not want, and markers whose line is gone
+    local ex="$1" line marked='' expect='' out='' changed=''
+    grep -qF -- "# shipwright-config exclude manages" "$ex" 2>/dev/null || return 0
     while IFS= read -r line || [ -n "$line" ]; do
-        if [ "$line" = "$MARK" ]; then held=1; continue; fi
-        if [ -n "$held" ]; then
-            held=''
-            case $'\n'"$want" in *$'\n'"$line"$'\n'*) out="$out$MARK"$'\n';; *) dropped=1; continue;; esac
+        if [ -n "$marked" ]; then
+            marked=''
+            # An OLD_MARK names no line, so trust the next one (v0.2.0's behaviour) and rewrite it as a MARK.
+            if [ -z "$expect" ] || [ "$line" = "$expect" ]; then
+                [ -z "$expect" ] && changed=1
+                case $'\n'"$want" in
+                    *$'\n'"$line"$'\n'*) out="$out$MARK $line"$'\n'"$line"$'\n' ;;
+                    *) changed=1 ;;
+                esac
+                continue
+            fi
+            changed=1 # the marked line was edited away: drop the marker, keep this line as the developer's
         fi
+        case "$line" in
+            "$OLD_MARK") marked=1; expect=''; continue ;;
+            "$MARK "*) marked=1; expect=${line#"$MARK "}; continue ;;
+        esac
         out="$out$line"$'\n'
     done < "$ex"
-    [ -n "$dropped" ] || return 0
-    tmp=$(mktemp "$ex.XXXXXX") || die "cannot write $ex"
-    { printf '%s' "$out" > "$tmp" && mv "$tmp" "$ex"; } || { rm -f "$tmp"; die "write failed: $ex"; }
+    [ -n "$marked" ] && changed=1 # a marker on the last line has nothing to manage
+    [ -n "$changed" ] || return 0
+    rewrite_keeping_mode "$ex" "$out"
 }
 
 exclude_docs() { # exclude-file: the docs_dir line, unless docs_dir is unsafe or has tracked files

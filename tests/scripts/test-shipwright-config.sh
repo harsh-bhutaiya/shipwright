@@ -117,4 +117,28 @@ git -C "$RM" check-ignore -q .shipwright/developer.conf; check "mode switch: dev
 check "docs_dir change: old docs line dropped" "0" "$(grep -cxF '/notes/' "$X")"
 check "docs_dir change: new docs line added" "1" "$(grep -cxF '/notes2/' "$X")"
 
+# A marker whose line was hand-deleted must not claim the developer's next line
+RO=$(repo o); XO="$RO/.git/info/exclude"; "$CFG" -C "$RO" set docs_mode local; "$CFG" -C "$RO" exclude
+grep -vxF '/docs/' "$XO" > "$XO.tmp"; mv "$XO.tmp" "$XO"; printf '/build/\n' >> "$XO"
+"$CFG" -C "$RO" exclude
+check "orphaned marker: developer's next line kept" "1" "$(grep -cxF '/build/' "$XO")"
+check "orphaned marker: managed line re-added once" "1" "$(grep -cxF '/docs/' "$XO")"
+check "orphaned marker: no marker left above the developer's line" "" "$(grep -B1 -xF '/build/' "$XO" | grep '^# shipwright-config')"
+grep -vxF '/docs/' "$XO" > "$XO.tmp"; mv "$XO.tmp" "$XO"; grep -vxF '/build/' "$XO" > "$XO.tmp"; mv "$XO.tmp" "$XO"
+"$CFG" -C "$RO" exclude
+check "orphaned marker at end of file: line re-added once" "1" "$(grep -cxF '/docs/' "$XO")"
+
+# A v0.2.0 marker (no line recorded) is rewritten in the current form, its line kept once
+RL=$(repo l); XL="$RL/.git/info/exclude"; mkdir -p "$RL/.git/info"
+printf '# shipwright-config exclude manages the next line\n/.shipwright/work/\n' > "$XL"
+"$CFG" -C "$RL" exclude
+check "v0.2.0 marker: rewritten" "0" "$(grep -cxF '# shipwright-config exclude manages the next line' "$XL")"
+check "v0.2.0 marker: its line kept once" "1" "$(grep -cxF '/.shipwright/work/' "$XL")"
+
+# Rewriting the exclude file keeps its permissions
+RP=$(repo p); XP="$RP/.git/info/exclude"; "$CFG" -C "$RP" set docs_mode local; "$CFG" -C "$RP" exclude
+chmod 644 "$XP"; "$CFG" -C "$RP" set docs_mode in-repo; "$CFG" -C "$RP" exclude
+check "rewrite: a line was dropped" "0" "$(grep -cxF '/docs/' "$XP")"
+check "rewrite: mode kept" "$XP" "$(find "$XP" -perm 644)"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
