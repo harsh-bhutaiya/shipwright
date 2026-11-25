@@ -148,4 +148,6 @@ Run the tests:
 bash tests/run-all.sh
 ```
 
+CI runs these tests on Ubuntu and on macOS's bash 3.2, and runs ShellCheck 0.10.0, on every pull request. It posts the results as a comment on the PR.
+
 Develop with the Shipwright plugin disabled in this repo. The guard and its self-protection rules trip on Shipwright's own sources.

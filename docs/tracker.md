@@ -33,6 +33,7 @@ The single place to see where the Shipwright build stands: decisions, open quest
 | 2026-11-25 | **Licence: MIT.** Superpowers' notice is kept and the owner's copyright line added. `.idea/` and `.DS_Store` are git-ignored, and `.idea/` is untracked | Owner's decision |
 | 2026-11-24 | Name: **Shipwright** | Chosen from a shortlist; Keel was the runner-up |
 | 2026-11-25 | **Release v0.1.0 = Milestone 1; Tasks 6-13 in v0.2+** | The user wants to publish today; Milestone 1 (forked skills, settings script, git guard, session-start hook, onboarding) is complete and reviewed |
+| 2026-11-25 | **CI: tests and ShellCheck on every PR, with a results comment.** Tests run on Ubuntu and on macOS's bash 3.2; ShellCheck is pinned to 0.10.0, the IDE's version. A separate workflow comments, and it never runs PR code. Evals and `claude plugin validate` stay out of CI | Owner's call: evals need an API key and cost money; validate would need the Claude CLI in CI |
 
 ## Open questions
 
@@ -103,3 +104,4 @@ Answer one at a time, in this order. Full context is in `docs/superpowers/specs/
   - Decided to release v0.1.0 as Milestone 1 only; Tasks 6-13 move to v0.2+.
   - Published the repo publicly at `harsh-bhutaiya/shipwright` and added the `protect-main` ruleset, secret scanning, push protection and private vulnerability reporting.
   - v0.2.0 built (Tasks 6-13).
+  - Added CI: tests on Ubuntu and macOS (bash 3.2), ShellCheck 0.10.0, and a PR results comment.
