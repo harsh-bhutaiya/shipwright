@@ -4,7 +4,7 @@ The single place to see where the Shipwright build stands: decisions, open quest
 
 ## Status
 
-**Phase:** v0.2.0 released (Tasks 6-13), with CI and required checks on `main`
+**Phase:** v0.2.1 released (v0.2.0 built Tasks 6-13), with CI and required checks on `main`
 **Next:** Try it on a real project
 
 ## Decisions
@@ -105,4 +105,4 @@ Answer one at a time, in this order. Full context is in `docs/superpowers/specs/
   - Published the repo publicly at `harsh-bhutaiya/shipwright` and added the `protect-main` ruleset, secret scanning, push protection and private vulnerability reporting.
   - v0.2.0 built (Tasks 6-13).
   - Added CI: tests on Ubuntu and macOS (bash 3.2), ShellCheck 0.10.0, and a PR results comment.
-  - Fixed `exclude` claiming a developer line under an orphaned marker and resetting the exclude file to 0600; the handover now uses `git checkout -b`.
+  - Fixed `exclude` claiming a developer line under an orphaned marker and resetting the exclude file to 0600; the handover now uses `git checkout -b`. Released as v0.2.1.

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 — 2026-11-25
 
 - `scripts/shipwright-config exclude`: each marker now names the line it manages. A marker whose line was hand-deleted is dropped without taking the developer's next line with it, and v0.2.0's markers are rewritten in the new form.
 - `scripts/shipwright-config exclude`: rewriting `.git/info/exclude` keeps its permissions.
