@@ -88,6 +88,7 @@ for c in 'git status' 'git diff HEAD' 'git log -3' 'git show HEAD' 'git rev-pars
 done
 
 echo "guard-git: parsing and extra cases"
+# shellcheck disable=SC2016  # literal command strings for the hook: $ must not expand
 for c in 'git pull' 'git am p.mbox' 'git rm f' 'git mv a b' 'git update-ref refs/heads/main abc' \
          'git worktree add ../w' $'git status\ngit tag v1' 'echo `git tag v1`' 'echo $(git tag v1)' \
          'if true; then git checkout -b x; fi' '/usr/bin/git push' 'git  push' 'sh -c '"'"'git tag v1'"'"''; do
@@ -151,6 +152,7 @@ t deny 'git push' "$REPO/sub" "$REPO"
 t deny 'git push' "$PLAIN"
 
 echo "guard-git: quoted options and continuations (review I1)"
+# shellcheck disable=SC2016  # literal command strings for the hook: $ must not expand
 for c in 'git -C "/tmp/r" commit -m x' 'git -c user.name="Claude Bot" commit -m x' \
          'git --git-dir="$d/.git" --work-tree="$d" add -A' 'git -C "$PWD" checkout main' \
          'git -C "$d" reset --hard' 'git -C "$d" stash' 'git -C "$d" tag v1' \
@@ -172,9 +174,11 @@ t allow 'which git'
 t allow 'brew upgrade git && git status'
 
 echo "guard-git: consent path without the file name (review I3, R8)"
+# shellcheck disable=SC2016  # literal command strings for the hook: $ must not expand
 t consent 'printf "commit_push=allowed\n" > "$(scripts/shipwright-config path developer)"'
 t consent $'scripts/shipwright-config \\\n set commit_push allowed'
 t consent 'scripts/shipwright-config -C ../B set commit_push allowed' "$OK"
+# shellcheck disable=SC2016  # literal command strings for the hook: $ must not expand
 t consent 'cat "$(scripts/shipwright-config path developer)"' "$OK"
 t consent 'cat .shipwright/develop""er.conf'
 t consent 'scripts/shipwright-config "set" "commit_push" allowed'
@@ -182,6 +186,7 @@ t allow 'scripts/shipwright-config path work'
 t allow 'scripts/shipwright-config path project'
 
 echo "guard-git: staging, destructive and ref plumbing (R7)"
+# shellcheck disable=SC2016  # literal command strings for the hook: $ must not expand
 for c in 'git apply --cached p.diff' 'git apply --index p.diff' 'git apply -3 p.diff' 'git clean -fd' 'git clean -n' \
          'git fetch origin main:main' "git fetch origin '+refs/heads/*:refs/heads/*'" \
          'git symbolic-ref HEAD refs/heads/x' 'git symbolic-ref --short HEAD' \
@@ -193,6 +198,7 @@ t allow 'git fetch origin'
 t allow 'GIT_INDEX_FILE=/tmp/tmp.Ab12Cd git read-tree HEAD'
 t allow 'git commit -m x' "$OK"
 # Allowed before round 2, denied by the R11 allowlist:
+# shellcheck disable=SC2016  # literal command strings for the hook: $ must not expand
 for c in 'git fetch git@github.com:a/b.git' 'git fetch https://example.com/a/b main' \
          'GIT_INDEX_FILE="$t" git update-index --add f' 'git apply --check p.diff'; do
     t deny "$c"
@@ -219,6 +225,7 @@ TABR="$T/tab"$'\t'"repo"; git init -q "$TABR"
 t deny 'git push' "$TABR" '<repo root>'
 
 echo "guard-git: review round 2 probes"
+# shellcheck disable=SC2016  # literal command strings for the hook: $ must not expand
 for c in 'git update-ref -m "a refs/shipwright/x" refs/heads/main HEAD~1' 'git worktree add "../a -d b/w"' \
          $'echo git \\\\\ngit branch new' 'GIT_WORK_TREE=/srv/git git branch new' \
          'GIT_WORK_TREE=/srv/git git worktree add -b x ../w' 'GIT_WORK_TREE=/srv/git git update-ref refs/heads/main HEAD~1' \
@@ -229,9 +236,10 @@ for c in 'git update-ref -m "a refs/shipwright/x" refs/heads/main HEAD~1' 'git w
 done
 # A long backslash run before a quote (finding 6) stays fast; it was quadratic.
 # Built already JSON-escaped (40000 backslashes are 80000 here): esc's ${//} is quadratic too.
+# shellcheck disable=SC1003  # tr reads '\\' as one backslash
 bs=$(printf '%80000s' '' | tr ' ' '\\'); s=$SECONDS
 raw "deny: echo + 40000 backslashes + \"; git push" "$DENY" "{\"cwd\":\"$REPO\",\"tool_input\":{\"command\":\"echo $bs\\\"; git push\"}}"
-[ $((SECONDS - s)) -le 2 ] && echo "  [PASS] 40 KB backslash run within 2 s" || { echo "  [FAIL] 40 KB backslash run took $((SECONDS - s)) s"; fails=$((fails+1)); }
+if [ $((SECONDS - s)) -le 2 ]; then echo "  [PASS] 40 KB backslash run within 2 s"; else echo "  [FAIL] 40 KB backslash run took $((SECONDS - s)) s"; fails=$((fails+1)); fi
 # An odd run continues the line, an even run is a literal backslash.
 t deny  $'echo x \\\ngit -C /r tag v1'
 t allow $'git status \\\\\necho done'
@@ -246,6 +254,7 @@ t deny  'echo expire | xargs git reflog'
 t allow 'ls | xargs git log --'
 
 echo "guard-git: R11 allowlist, read-only and scratch forms allowed"
+# shellcheck disable=SC2016  # literal command strings for the hook: $ must not expand
 for c in 'git ls-tree HEAD' 'git cat-file -p HEAD' 'git shortlog -s' 'git describe --tags' 'git reflog' \
          'git grep -n foo' 'git config --get user.name' 'git config --list' 'git config get user.name' \
          'git for-each-ref refs/shipwright' 'git merge-base main HEAD' 'git name-rev HEAD' \
@@ -260,6 +269,7 @@ for c in 'git ls-tree HEAD' 'git cat-file -p HEAD' 'git shortlog -s' 'git descri
 done
 
 echo "guard-git: R11 allowlist, everything else denied"
+# shellcheck disable=SC2016  # literal command strings for the hook: $ must not expand
 for c in 'git config user.name x' 'git config --unset user.name' 'git config --get x && git config core.x y' \
          'git reflog expire --expire=now --all' 'git worktree prune' 'git worktree add --detach -b x ../w' \
          'git worktree add --detach ../w HEAD extra' 'git worktree move ../a ../b' \
@@ -298,6 +308,7 @@ t allow 'git -c color.ui=never diff' "$OK"
 t allow 'git grep -n -e Option foo'
 
 echo "guard-git: review round 3 probes"
+# shellcheck disable=SC2016  # literal command strings for the hook: $ must not expand
 for c in 'cat p.diff | git apply \--cached' "cat p.diff | git apply \$''--cached" "cat p.diff | git apply \$'--cached'" \
          'cat p.diff | git apply {--cached,}' 'cat p.diff | git apply $(printf %s --cached)' \
          'git fetch origin $(echo +main:feature)' 'git fetch origin `echo main:newb`' \
@@ -325,6 +336,7 @@ for c in 'cat p.diff | git apply \--cached' "cat p.diff | git apply \$''--cached
     t deny "$c"
 done
 # Beyond the probes: brace and bracket spellings of git, and GIT_CONFIG named only indirectly.
+# shellcheck disable=SC2016  # literal command strings for the hook: $ must not expand
 for c in '{git,} commit -m x' 'gi{t,} branch new' 'g[i]t branch new' 'x=GIT_CONFIG_COUNT; export $x=1; git status'; do
     t deny "$c"
 done
@@ -334,6 +346,7 @@ for c in 'bash git_helpers.sh' 'cat .gitignore' 'ls .github/workflows' 'git clon
     t allow "$c"
 done
 # Moved from the R11 allow list: a variable or an unanchored index path is no longer accepted.
+# shellcheck disable=SC2016  # literal command strings for the hook: $ must not expand
 for c in 'GIT_INDEX_FILE=$t git update-index --add --remove -- a b' 'GIT_INDEX_FILE=$t git update-index --add --remove a b' \
          'git update-ref refs/shipwright/t1 "$sha"'; do
     t deny "$c"
@@ -342,10 +355,11 @@ done
 semis=$(printf '%300000s' '' | tr ' ' ';'); s=$SECONDS
 raw "allow: 300000 semicolons" "" "{\"cwd\":\"$REPO\",\"tool_input\":{\"command\":\"$semis\"}}"
 raw "allow: x\" + 300000 semicolons" "" "{\"cwd\":\"$REPO\",\"tool_input\":{\"command\":\"x\\\"$semis\"}}"
-[ $((SECONDS - s)) -le 6 ] && echo "  [PASS] separator runs within 6 s" || { echo "  [FAIL] separator runs took $((SECONDS - s)) s"; fails=$((fails+1)); }
+if [ $((SECONDS - s)) -le 6 ]; then echo "  [PASS] separator runs within 6 s"; else echo "  [FAIL] separator runs took $((SECONDS - s)) s"; fails=$((fails+1)); fi
 
 echo "guard-git: hooks.json wiring"
 J="$ROOT/hooks/hooks.json"
+# shellcheck disable=SC2016  # literal hooks.json text: ${CLAUDE_PLUGIN_ROOT} must not expand
 for want in '"PreToolUse"' '"matcher": "Bash"' '"matcher": "Edit|Write|MultiEdit|NotebookEdit"' '"shell": "bash"' \
             '"command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" guard-git"' \
             '"powershell": "& \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" guard-git"'; do
@@ -354,6 +368,6 @@ for want in '"PreToolUse"' '"matcher": "Bash"' '"matcher": "Edit|Write|MultiEdit
 done
 # A crashed or timed-out guard must block the call, on both entries.
 n=$(grep -c '"onFailure": "block"' "$J" 2>/dev/null)
-[ "$n" = 2 ] && echo "  [PASS] both hook entries fail closed" || { echo "  [FAIL] onFailure block on $n of 2 entries"; fails=$((fails+1)); }
+if [ "$n" = 2 ]; then echo "  [PASS] both hook entries fail closed"; else echo "  [FAIL] onFailure block on $n of 2 entries"; fails=$((fails+1)); fi
 
-[ "$fails" -eq 0 ] && echo "STATUS: PASSED" || { echo "STATUS: FAILED ($fails)"; exit 1; }
+if [ "$fails" -eq 0 ]; then echo "STATUS: PASSED"; else echo "STATUS: FAILED ($fails)"; exit 1; fi

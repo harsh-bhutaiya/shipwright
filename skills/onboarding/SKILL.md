@@ -38,7 +38,7 @@ Ask where docs should live:
 
 Working files (progress notes, data-bearing investigation notes) stay local in every mode. The developer can change the choice at any time.
 
-In local mode, if `docs/` is already tracked by git, choose a different `docs_dir`, or accept that the docs stay visible to git.
+In `local` or `shared-tool` mode the docs folder is git-excluded. If `docs/` is already tracked by git, choose a different `docs_dir`, or accept that the docs stay visible to git.
 
 Remember the answer, but do not write `docs_mode` yet: it is written last, in step 9, so an interrupted onboarding leaves it empty and the project still counts as not onboarded.
 

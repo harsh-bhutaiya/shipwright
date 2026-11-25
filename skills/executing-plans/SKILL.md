@@ -29,18 +29,14 @@ between tasks. They chose inline execution to spend less, not to answer
 "should I continue?" after every task. Execute all tasks from the plan
 without stopping.
 
-**Rulings, not stalls.** Conflicts, ambiguities, plan defects — decide them.
-The spec is the binding authority, the plan is its argument, and your
-judgment settles what neither answers. Record every decision in the ledger
-as `Ruling: <what you decided> — <why> — <what it costs if wrong>`, and keep
-going. Deviating from the plan without a ledgered ruling is a decision made
-in secret.
+**Decisions during the build (spec §2.9, split).**
+- **Requirements and planning:** ask about everything open. Assume nothing; this is where "assume nothing" applies in full.
+- **During the build, stop and ask only when** the issue would change *what* gets built (the requirements or agreed scope), or touches one of the 9 risky categories in §2.6 (the 9 categories listed in shipwright:writing-plans).
+- **Everything else:** Shipwright decides, records the decision with its reason and what it costs if wrong, and keeps going. Every recorded decision is listed in the end-of-work summary for the developer to review, and is appended to the spec's completion summary (§4.3; shipwright:finishing-a-development-branch writes it).
+- **Auto-approved plans follow the same rule:** auto-approval never removes a stop for requirements or risky issues.
 
-Four things stop you, and only these: an irreversible or destructive
-operation; a security-sensitive action; a side effect outside this worktree
-that norms say you ask about first (a merge, a push to a shared branch, a
-publish); and a plan so broken that every path forward is a guess. For
-those, stop and ask.
+Record each decision in the ledger as
+`Ruling: <what you decided> — <why> — <what it costs if wrong>`.
 
 ## When to Use
 
@@ -84,6 +80,7 @@ digraph process {
     "More tasks remain?" [shape=diamond];
     "Final whole-branch review (fresh reviewer if you have one)" [shape=box];
     "Re-grade, then: Critical/Important → ONE fix pass, each fix RED→GREEN + green suite; Minor → ledger" [shape=box];
+    "Run shipwright:verifying-work (whole Acceptance checklist)" [shape=box];
     "Final review clean: delete this plan's workspace" [shape=box];
     "Use shipwright:finishing-a-development-branch" [shape=box style=filled fillcolor=lightgreen];
 
@@ -100,7 +97,8 @@ digraph process {
     "More tasks remain?" -> "task-start: brief + BASE; read the brief" [label="yes"];
     "More tasks remain?" -> "Final whole-branch review (fresh reviewer if you have one)" [label="no"];
     "Final whole-branch review (fresh reviewer if you have one)" -> "Re-grade, then: Critical/Important → ONE fix pass, each fix RED→GREEN + green suite; Minor → ledger";
-    "Re-grade, then: Critical/Important → ONE fix pass, each fix RED→GREEN + green suite; Minor → ledger" -> "Final review clean: delete this plan's workspace";
+    "Re-grade, then: Critical/Important → ONE fix pass, each fix RED→GREEN + green suite; Minor → ledger" -> "Run shipwright:verifying-work (whole Acceptance checklist)";
+    "Run shipwright:verifying-work (whole Acceptance checklist)" -> "Final review clean: delete this plan's workspace";
     "Final review clean: delete this plan's workspace" -> "Use shipwright:finishing-a-development-branch";
 }
 ```
@@ -173,6 +171,10 @@ in the workspace and read its tail; read a brief, not the whole plan.
 - Run this skill's `scripts/task-start PLAN_FILE N` by its absolute path,
   from the working tree you're executing in. It prints the brief
   path and BASE (the commit the task's range is cut from) in one call.
+  With uncommitted work (no commit permission), cut the range from a
+  snapshot instead: run
+  `../subagent-driven-development/scripts/snapshot BASE_LABEL` by its
+  absolute path, and pass the ref it prints to `task-done` as BASE.
   Read the brief for every task, including ones you remember from setup:
   what you remember is a summary, the brief has the exact values,
   signatures, and test cases.
@@ -204,7 +206,7 @@ read its output, and compare. Three outcomes:
   the same interface read it from the ledger.
 
 Commit as the plan's commit steps say. A task that spans several commits
-is fine; BASE is what the review range is cut from, never `HEAD~1`.
+is fine; BASE is what the review range is cut from, never `HEAD~1`; a snapshot ref works as BASE and as HEAD for `review-package`.
 
 ### 3. The completion contract
 
@@ -237,7 +239,9 @@ mark the todo complete and take the next task.
 
 Run `../subagent-driven-development/scripts/review-package PLAN_FILE MERGE_BASE HEAD`
 by its absolute path, from the working tree you're executing in (MERGE_BASE = the commit the branch started from, e.g.
-`git merge-base main HEAD`) and review from the file it prints.
+`git merge-base main HEAD`; with uncommitted work, HEAD is a snapshot from
+`../subagent-driven-development/scripts/snapshot`) and review from the file it prints.
+At handover run `../subagent-driven-development/scripts/snapshot --cleanup`.
 
 **With a subagent tool:** dispatch the reviewer on the most capable
 available model — the whole-branch review is a judgment task — using
@@ -292,6 +296,11 @@ in the rulings list. There is no second fix pass.
 
 ## Finish
 
+First, run shipwright:verifying-work: it runs the plan's whole Acceptance
+checklist against the real thing. Do not finish while a checklist line is
+unverified or failing. Ledger every fix it makes, and run the suite after
+each. Only then collect and delete, below.
+
 Before you delete anything, collect every ledger line containing
 `Ruling:` into your final message under "Rulings I made", in the order you
 made them, each with what it costs if wrong, and every `minor (deferred)`
@@ -314,7 +323,7 @@ Use shipwright:finishing-a-development-branch.
 | "I'll run the full suite at the end instead of per step" | Per-step runs are how you learn which step broke it. The end-of-task run is the contract, not a substitute. |
 | "The plan is wrong here, I'll just do the right thing" | Do the right thing and ledger the ruling. Unledgered deviation is a decision made in secret. |
 | "I'll write the ledger lines after a few tasks" | Compaction does not wait for a convenient moment. One line per task, in the same message as the commit. |
-| "Let me check in before the next task" | They chose inline to spend less. Progress prompts spend their time instead. Only the four stops stop you. |
+| "Let me check in before the next task" | They chose inline to spend less. Progress prompts spend their time instead. Only the §2.9 stops (changed requirements, risky categories) stop you. |
 | "I read my own diff carefully; the final reviewer is redundant" | Same author, same blind spots. The reviewer is the only fresh context this run buys. |
 | "Tests should pass, the change was trivial" | "Should" is not evidence. The contract requires the command and its output. |
 | "Subagents are slow and expensive, I'll skip the final review too" | Inline already removed the per-task reviewers. One review of the whole branch is the floor, not the ceiling. |

@@ -4,7 +4,7 @@ This repo is a Claude Code plugin (`shipwright`) and its own team marketplace.
 
 ## Status
 
-v0.1.0 (Milestone 1) has shipped. Tasks 6-13 of `docs/superpowers/plans/2026-11-24-shipwright.md` remain for v0.2+. Design: `docs/superpowers/specs/2026-11-24-shipwright-design.md`. Track decisions, open questions and progress in `docs/tracker.md` and update it whenever any of these change.
+v0.2.0 is built (Tasks 6-13 of `docs/superpowers/plans/2026-11-24-shipwright.md`); v0.1.0 shipped earlier. Design: `docs/superpowers/specs/2026-11-24-shipwright-design.md`. Track decisions, open questions and progress in `docs/tracker.md` and update it whenever any of these change.
 
 ## Layout
 

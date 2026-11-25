@@ -49,6 +49,35 @@ parts work today and what this change would touch. Never ask what the
 project or their context already answers, or reopen what they've
 already decided.
 
+Then, still before your first message:
+
+- **Docs storage.** Read `docs_mode` with
+  `"${CLAUDE_PLUGIN_ROOT}/scripts/shipwright-config" get docs_mode`. If it
+  is empty, call `shipwright:onboarding` first and come back here when it
+  is done.
+- **Coding standards.** Settle which standard applies, in this order:
+  1. If coding standards are defined in **any** file in the project,
+     follow them.
+  2. Otherwise, follow the project's existing code patterns.
+  3. If the code is not well managed, so there is no consistent pattern
+     to follow, **flag that to the user** and follow industry standards.
+
+  Edge-case defaults:
+  - **Written standard vs. existing code:** the written standard wins for
+    new code. Flag the mismatch, and do not rewrite existing code unless
+    that is asked for.
+  - **"Industry standards":** the language's or framework's official style
+    guide, plus any linters or formatters already configured in the repo.
+  - **When to flag:** once, at the start of work in a project, with the
+    evidence (files and examples), not again on every task.
+- **Earlier decisions.** Read `<docs_dir>` (from `shipwright-config get
+  docs_dir`) for specs, plans and write-ups that bear on the request. When
+  `docs_mode` is `shared-tool`, also search the wiki through the connector
+  named by `wiki_connector`. If the request contradicts an earlier
+  decision, do not simply agree: cite the decision as evidence, with its
+  file path (or wiki page), say what it decided, and proceed only after
+  your human partner confirms the change.
+
 ## Your First Message
 
 Move the work forward, with one of these:
@@ -243,9 +272,15 @@ or two each and goes straight to your human partner, without the
 builder check.
 
 **Where it goes:** in a software repo,
-`docs/shipwright/specs/YYYY-MM-DD-<topic>-design.md`, committed.
-Otherwise, pick a sensible place and say where. Your human partner's
-preferences override both.
+`<docs_dir>/specs/YYYY-MM-DD-<topic>-design.md`, where `<docs_dir>` is
+`"${CLAUDE_PLUGIN_ROOT}/scripts/shipwright-config" get docs_dir`. Commit it
+only when `docs_mode` is `in-repo` and `commit_push` is `allowed`;
+otherwise leave it uncommitted for the developer (finishing adds it to the
+last branch's `git add` list in `in-repo` mode). Once it
+is written, call `shipwright:publishing-docs` with the file (it does
+nothing unless `docs_mode` is `shared-tool`). Outside a software repo,
+pick a sensible place and say where. Your human partner's preferences
+override all of this.
 
 **Builder check** (for a project): dispatch a fresh subagent with
 `builder-check-prompt.md` in this directory. When you tell your human

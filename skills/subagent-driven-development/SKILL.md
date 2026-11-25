@@ -14,21 +14,16 @@ Execute plan by dispatching a fresh implementer subagent per task, a task review
 **Narration:** between tool calls, narrate at most one short line — the
 ledger and the tool results carry the record.
 
-**Continuous execution:** Do not pause to check in with your human partner between tasks. Execute all tasks from the plan without stopping. The only reasons to stop are the four named below, or all tasks complete. "Should I continue?" prompts and progress summaries waste their time — they asked you to execute the plan, so execute it.
+**Continuous execution:** Do not pause to check in with your human partner between tasks. Execute all tasks from the plan without stopping. The only reasons to stop are the stops named in the decisions rule below, or all tasks complete. "Should I continue?" prompts and progress summaries waste their time — they asked you to execute the plan, so execute it.
 
-**Rulings, not stalls.** A running plan does not wait on a human. Conflicts,
-ambiguities, plan defects, a cap you would have asked to exceed — decide
-them. The spec is the binding authority, the plan is its argument, and your
-judgment settles what neither answers. Record every decision in the ledger as
-`Ruling: <what you decided> — <why> — <what it costs if wrong>`, and keep
-going. A wrong ruling costs rework your human partner can see and undo; a
-session parked on a question costs their whole day and buys nothing.
+**Decisions during the build (spec §2.9, split).**
+- **Requirements and planning:** ask about everything open. Assume nothing; this is where "assume nothing" applies in full.
+- **During the build, stop and ask only when** the issue would change *what* gets built (the requirements or agreed scope), or touches one of the 9 risky categories in §2.6 (the 9 categories listed in shipwright:writing-plans).
+- **Everything else:** Shipwright decides, records the decision with its reason and what it costs if wrong, and keeps going. Every recorded decision is listed in the end-of-work summary for the developer to review, and is appended to the spec's completion summary (§4.3; shipwright:finishing-a-development-branch writes it).
+- **Auto-approved plans follow the same rule:** auto-approval never removes a stop for requirements or risky issues.
 
-Four things stop you, and only these: an irreversible or destructive
-operation; a security-sensitive action; a side effect outside this worktree
-that norms say you ask about first (a merge, a push to a shared branch, a
-publish); and a plan so broken that every path forward is a guess. For those,
-stop and ask.
+Record each decision in the ledger as
+`Ruling: <what you decided> — <why> — <what it costs if wrong>`.
 
 ## When to Use
 
@@ -67,7 +62,7 @@ digraph process {
         "Dispatch implementer subagent (./implementer-prompt.md)" [shape=box];
         "Implementer asks questions?" [shape=diamond];
         "Answer questions, provide context" [shape=box];
-        "Implementer implements, tests, commits, self-reviews" [shape=box];
+        "Implementer implements, tests, self-reviews; commits only if commit_push=allowed, else reports files + message" [shape=box];
         "Generate review package, dispatch task reviewer (./task-reviewer-prompt.md)" [shape=box];
         "Spec ✅ and quality approved?" [shape=diamond];
         "Fix loop: read references/fix-loop.md before every round" [shape=box];
@@ -77,15 +72,16 @@ digraph process {
     "Setup: worktree, ledger check, read plan, pre-flight review" [shape=box];
     "More tasks remain?" [shape=diamond];
     "Final review and finish: read references/final-review.md" [shape=box];
+    "Run shipwright:verifying-work (whole Acceptance checklist)" [shape=box];
     "Final review clean: delete this plan's workspace" [shape=box];
     "Use shipwright:finishing-a-development-branch" [shape=box style=filled fillcolor=lightgreen];
 
     "Setup: worktree, ledger check, read plan, pre-flight review" -> "Dispatch implementer subagent (./implementer-prompt.md)";
     "Dispatch implementer subagent (./implementer-prompt.md)" -> "Implementer asks questions?";
     "Implementer asks questions?" -> "Answer questions, provide context" [label="yes"];
-    "Answer questions, provide context" -> "Implementer implements, tests, commits, self-reviews";
-    "Implementer asks questions?" -> "Implementer implements, tests, commits, self-reviews" [label="no"];
-    "Implementer implements, tests, commits, self-reviews" -> "Generate review package, dispatch task reviewer (./task-reviewer-prompt.md)";
+    "Answer questions, provide context" -> "Implementer implements, tests, self-reviews; commits only if commit_push=allowed, else reports files + message";
+    "Implementer asks questions?" -> "Implementer implements, tests, self-reviews; commits only if commit_push=allowed, else reports files + message" [label="no"];
+    "Implementer implements, tests, self-reviews; commits only if commit_push=allowed, else reports files + message" -> "Generate review package, dispatch task reviewer (./task-reviewer-prompt.md)";
     "Generate review package, dispatch task reviewer (./task-reviewer-prompt.md)" -> "Spec ✅ and quality approved?";
     "Spec ✅ and quality approved?" -> "Append completion to ledger, mark todo complete" [label="yes"];
     "Spec ✅ and quality approved?" -> "Fix loop: read references/fix-loop.md before every round" [label="no"];
@@ -93,7 +89,8 @@ digraph process {
     "Append completion to ledger, mark todo complete" -> "More tasks remain?";
     "More tasks remain?" -> "Dispatch implementer subagent (./implementer-prompt.md)" [label="yes"];
     "More tasks remain?" -> "Final review and finish: read references/final-review.md" [label="no"];
-    "Final review and finish: read references/final-review.md" -> "Final review clean: delete this plan's workspace";
+    "Final review and finish: read references/final-review.md" -> "Run shipwright:verifying-work (whole Acceptance checklist)";
+    "Run shipwright:verifying-work (whole Acceptance checklist)" -> "Final review clean: delete this plan's workspace";
     "Final review clean: delete this plan's workspace" -> "Use shipwright:finishing-a-development-branch";
 }
 ```
@@ -197,8 +194,13 @@ child is noticed within minutes, not at the end of the session.
 
 ### 1. Dispatch the implementer
 
-Record BASE (`git rev-parse HEAD`) before dispatching — the review package
-and fix-round diffs need it.
+Record BASE before dispatching — the review package and fix-round diffs
+need it. BASE is a snapshot, not a commit: run this skill's
+`bash scripts/snapshot BASE_LABEL` by its absolute path (for example label
+`task-N-base`) from the working tree you're executing in. It records the
+working tree as `refs/shipwright/<label>` and prints that ref, without
+touching the developer's index, stash or branch. Never run git plumbing
+yourself; the script is the only way.
 
 - **Task brief:** before dispatching an implementer, run this skill's
   `bash scripts/task-brief PLAN_FILE N` by its absolute path, from the
@@ -210,13 +212,18 @@ and fix-round diffs need it.
   first — it is your requirements, with the exact values to use verbatim";
   (3) interfaces and decisions from earlier tasks that the brief cannot
   know; (4) your resolution of any ambiguity you noticed in the brief;
-  (5) the report-file path and report contract. Exact values (numbers,
-  magic strings, signatures, test cases) appear only in the brief. Never
-  make a subagent read the whole plan file.
+  (5) the report-file path and report contract; (6) the `commit_push`
+  value (`"${CLAUDE_PLUGIN_ROOT}/scripts/shipwright-config" get commit_push`):
+  the implementer commits only when it is `allowed`, otherwise it leaves
+  the changes in the working tree and reports the files and a commit
+  message. You record BASE and HEAD with `scripts/snapshot` either way.
+  Exact values (numbers, magic strings, signatures, test cases) appear
+  only in the brief. Never make a subagent read the whole plan file.
 - **Report file:** name the implementer's report file after the brief
   (brief `…/task-N-brief.md` → report `…/task-N-report.md`) and put it in
   the dispatch prompt. The implementer writes the full report there and
-  returns only status, commits, a one-line test summary, and concerns.
+  returns only status, commits (or files and a commit message), a one-line
+  test summary, and concerns.
 - A dispatch prompt describes one task, not the session's history. Do not
   paste accumulated prior-task summaries ("state after Tasks 1-3") into
   later dispatches — a real session's dispatch hit 42k chars of which 99%
@@ -232,7 +239,8 @@ and fix-round diffs need it.
   a pointer to that ledger entry in the dispatch.
 - Record the implementer's agent identity from the dispatch result —
   fix-loop rounds 1-3 resume this agent.
-- Never dispatch multiple implementation subagents in parallel (conflicts).
+- Parallel implementers are allowed only when the plan's tasks share no files (compare the tasks' file lists; any overlap means sequential). Each lane runs in its own scratch worktree: `bash scripts/snapshot --lane <label> <base-ref>` creates it under `.shipwright/work/lanes/<label>` and prints the path. When a lane finishes, run `bash scripts/snapshot -C <lane path> <lane-ref-label>`, then apply its result to the main tree with `bash scripts/snapshot --apply-lane <base-ref> <lane-ref>` (one script call; a piped `git diff | git apply` is denied by the git guard). Otherwise never dispatch implementers in parallel (conflicts).
+- At handover, `bash scripts/snapshot --cleanup` removes every `refs/shipwright/*` ref and every scratch lane worktree.
 
 Template: [implementer-prompt.md](implementer-prompt.md)
 
@@ -240,7 +248,7 @@ Template: [implementer-prompt.md](implementer-prompt.md)
 
 Implementer subagents report one of four statuses. Handle each appropriately:
 
-**DONE:** Generate the review package (`bash scripts/review-package PLAN_FILE BASE HEAD` by its absolute path, from the working tree you're executing in — it prints the unique file path it wrote; BASE is the commit you recorded before dispatching the implementer — never `HEAD~1`, which silently drops all but the last commit of a multi-commit task), then dispatch the task reviewer with the printed path.
+**DONE:** Generate the review package (`bash scripts/review-package PLAN_FILE BASE HEAD` by its absolute path, from the working tree you're executing in — it prints the unique file path it wrote; BASE is the snapshot ref you recorded before dispatching the implementer, and HEAD is a snapshot taken now (`bash scripts/snapshot task-N-head`) — never `HEAD~1`, which silently drops work), then dispatch the task reviewer with the printed path.
 
 **Any other status** (DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED): read
 [references/handling-reports.md](references/handling-reports.md) and follow
@@ -323,6 +331,12 @@ parked-with-ruling at the cap.
 When every task is complete, read
 [references/final-review.md](references/final-review.md) and follow it. It
 covers the whole-branch review, its single fix wave, and how you finish.
+
+After the final review is clean, and before you collect rulings, delete the
+workspace or hand off to shipwright:finishing-a-development-branch, run
+shipwright:verifying-work: it runs the plan's whole Acceptance checklist
+against the real thing. Do not finish while a checklist line is unverified or
+failing.
 
 ## Common Rationalizations
 

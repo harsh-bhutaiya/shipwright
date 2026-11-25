@@ -21,6 +21,7 @@ case $input in *'{'*) ;; *) exit 0;; esac
 # over $#, trimming one character at a time and growing a string piece by
 # piece all go quadratic on long input.
 odd_tail() { # text -> 0 when it ends in an odd run of backslashes
+    # shellcheck disable=SC1003,SC2141  # IFS is a lone backslash on purpose
     local IFS='\' f e=0 k=0
     case $1 in *\\) ;; *) return 1;; esac
     # Sentinels at both ends: bash and zsh then split alike, and a run of n
@@ -30,30 +31,31 @@ odd_tail() { # text -> 0 when it ends in an odd run of backslashes
 }
 
 json_str() { # key -> REPLY: unescaped string value of the first "key": "..." in $input
-    local IFS='"' f v state=key c first=1 lit= n=0 m=0
+    local IFS='"' f v state=key c first=1 lit='' n=0 m=0
     local -a raw parts
     REPLY=
     # Fields between quotes: the key, a lone colon, then the value up to the
     # first quote that does not follow an odd run of backslashes.
     for f in $input; do
         case $state in
-            key) [ "$f" = "$1" ] && state=colon;;
+            key) [ "$f" = "$1" ] && state='colon';;
             colon) case $f in *:*:*|*[![:space:]:]*) state=key;; *:*) state=value;; *) state=key;; esac;;
             value) raw[m]=$f; m=$((m+1))
-                odd_tail "$f" || { state=done; break; }
+                odd_tail "$f" || { state='done'; break; }
                 raw[m]='"'; m=$((m+1));;
         esac
     done
-    [ "$state" = done ] || return 1
+    [ "$state" = 'done' ] || return 1
     IFS=; v="${raw[*]}"
     # Split on backslashes: each field after the first starts with an escaped
     # character, except after "\\", whose second backslash was the escaped one.
+    # shellcheck disable=SC1003,SC2141  # IFS is a lone backslash on purpose
     IFS='\'
     for f in $v; do
         c=
         if [ -n "$first" ]; then first=
         elif [ -n "$lit" ]; then lit=
-        elif [ -z "$f" ]; then parts[n]='\'; n=$((n+1)); lit=1; continue
+        elif [ -z "$f" ]; then parts[n]=\\; n=$((n+1)); lit=1; continue
         else
             c=${f:0:1}; f=${f:1}
             case $c in n) c=$'\n';; t) c=$'\t';; esac # other escapes keep their character: right for \" \\ \/, harmless for the rest
@@ -78,6 +80,7 @@ join_continued() { # $cmd with each backslash-newline turned into a space
 # (bash -c "git tag v1") all match. shortcut: prose such as echo "git reset"
 # is denied too; fails safe, parse the shell if it bites.
 q="'"
+# shellcheck disable=SC2016  # $ and backquotes are ERE text, not expansions
 word='([^[:space:];&|()`"'$q'\]|\\.|"([^"\]|\\.)*"|'$q'[^'$q']*'$q'|\$\([^)]*\)|`[^`]*`)+'
 opt='[[:blank:]]+((-C|-c|--git-dir|--work-tree|--namespace|--config-env)[[:blank:]]+'$word'|-'$word')'
 always='commit|push|add|tag|merge|rebase|cherry-pick|revert|reset|stash|pull|am|rm|mv|checkout|switch|restore|clean|symbolic-ref'
@@ -108,7 +111,7 @@ no_output() { # words -> 0 when none is --output, which writes any file (.git/re
 # the exact scratch forms below; anything unrecognised before or after the
 # subcommand denies.
 git_denied() { # words of one segment -> 0 when they hold a git call outside the allowlist
-    local idx= tmp= sub= a git= xa= cw= o= i=0 st=
+    local idx='' tmp='' sub='' a git='' xa='' cw='' o='' i=0 st=''
     for a; do # NAME=value words, wrappers and their options: anything before git
         i=$((i+1))
         case $a in
@@ -208,10 +211,12 @@ git_denied() { # words of one segment -> 0 when they hold a git call outside the
 scan() { # $text -> 0 when one of its segments holds a git call outside the allowlist
     local seg IFS=$';&|()`\n'
     for seg in $text; do # only segments naming git can matter; skipping the rest keeps separator runs fast
+        # shellcheck disable=SC2086  # split on purpose: IFS is space and tab, set -f is on
         case $seg in *[Gg][Ii][Tt]*) IFS=$' \t'; git_denied $seg && return 0;; esac
     done
     return 1
 }
+# shellcheck disable=SC2086,SC2141  # IFS holds a backslash on purpose, and $1 is split on it under set -f
 unquote() { # text -> REPLY: text without quotes, \, $, braces, brackets or commas, so escapes,
     local IFS=$'"\'\\${},[]' # {git,} and g[i]t cannot hide a word
     set -- $1; IFS=; REPLY="$*"
@@ -239,7 +244,7 @@ if ! json_str command; then # a file-editing tool
     fi
     exit 0
 fi
-cmd=$REPLY; raw=$cmd
+cmd=$REPLY; unjoined=$cmd
 case $cmd in *\\$'\n'*) join_continued;; esac
 # A copy with quotes, backslashes and $ dropped, so a quoted or escaped word
 # stays in its git call; the checks below read both.
@@ -251,7 +256,9 @@ case $both in *[dD][eE][vV][eE][lL][oO][pP][eE][rR].[cC][oO][nN][fF]*) deny "$co
 cfg_re=$'shipwright-config[^;&|\n]*[[:blank:]\'"](set[[:blank:]]+[\'"]?commit_push|path[[:blank:]]+[\'"]?developer)([^[:alnum:]_]|$)'
 [[ $both =~ $cfg_re ]] && deny "$consent"
 
-dyn=; case $cmd in *[\$\`{]*) dyn=1;; esac # expansions: see git_denied
+dyn=
+# shellcheck disable=SC1083  # { is a literal member of the bracket set
+case $cmd in *[\$\`{]*) dyn=1;; esac # expansions: see git_denied
 hit=
 if [[ $both =~ $re ]]; then hit=1
 else
@@ -264,9 +271,9 @@ fi
 if [ -z "$hit" ]; then
     text=$unq; scan && hit=1
     [ -n "$hit" ] || [ "$cmd" = "$unq" ] || { text=$cmd; scan && hit=1; }
-    if [ -z "$hit" ] && [ "$raw" != "$cmd" ]; then
-        text=$raw; scan && hit=1
-        [ -n "$hit" ] || { unquote "$raw"; text=$REPLY; scan && hit=1; }
+    if [ -z "$hit" ] && [ "$unjoined" != "$cmd" ]; then
+        text=$unjoined; scan && hit=1
+        [ -n "$hit" ] || { unquote "$unjoined"; text=$REPLY; scan && hit=1; }
     fi
 fi
 [ -n "$hit" ] || exit 0

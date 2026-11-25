@@ -7,7 +7,7 @@ run_claude() {
     local prompt="$1"
     local timeout="${2:-60}"
     local allowed_tools="${3:-}"
-    local output_file=$(mktemp)
+    local output_file; output_file=$(mktemp)
 
     # Build command as an argv array so timeout wraps claude directly.
     local cmd=(claude -p "$prompt")
@@ -44,6 +44,7 @@ assert_contains() {
         echo "  [FAIL] $test_name"
         echo "  Expected to find: $pattern"
         echo "  In output:"
+        # shellcheck disable=SC2001  # sed indents every line; ${//} has no line anchor
         echo "$output" | sed 's/^/    /'
         return 1
     fi
@@ -60,6 +61,7 @@ assert_not_contains() {
         echo "  [FAIL] $test_name"
         echo "  Did not expect to find: $pattern"
         echo "  In output:"
+        # shellcheck disable=SC2001  # sed indents every line; ${//} has no line anchor
         echo "$output" | sed 's/^/    /'
         return 1
     else
@@ -76,7 +78,7 @@ assert_count() {
     local expected="$3"
     local test_name="${4:-test}"
 
-    local actual=$(echo "$output" | grep -ci "$pattern" || echo "0")
+    local actual; actual=$(echo "$output" | grep -ci "$pattern" || echo "0")
 
     if [ "$actual" -eq "$expected" ]; then
         echo "  [PASS] $test_name (found $actual instances)"
@@ -86,6 +88,7 @@ assert_count() {
         echo "  Expected $expected instances of: $pattern"
         echo "  Found $actual instances"
         echo "  In output:"
+        # shellcheck disable=SC2001  # sed indents every line; ${//} has no line anchor
         echo "$output" | sed 's/^/    /'
         return 1
     fi
@@ -100,12 +103,13 @@ assert_order() {
     local test_name="${4:-test}"
 
     # Get line numbers where patterns appear
-    local line_a=$(echo "$output" | grep -ni "$pattern_a" | head -1 | cut -d: -f1)
-    local line_b=$(echo "$output" | grep -ni "$pattern_b" | head -1 | cut -d: -f1)
+    local line_a; line_a=$(echo "$output" | grep -ni "$pattern_a" | head -1 | cut -d: -f1)
+    local line_b; line_b=$(echo "$output" | grep -ni "$pattern_b" | head -1 | cut -d: -f1)
 
     if [ -z "$line_a" ]; then
         echo "  [FAIL] $test_name: pattern A not found: $pattern_a"
         echo "  In output:"
+        # shellcheck disable=SC2001  # sed indents every line; ${//} has no line anchor
         echo "$output" | sed 's/^/    /'
         return 1
     fi
@@ -113,6 +117,7 @@ assert_order() {
     if [ -z "$line_b" ]; then
         echo "  [FAIL] $test_name: pattern B not found: $pattern_b"
         echo "  In output:"
+        # shellcheck disable=SC2001  # sed indents every line; ${//} has no line anchor
         echo "$output" | sed 's/^/    /'
         return 1
     fi
@@ -131,7 +136,7 @@ assert_order() {
 # Create a temporary test project directory
 # Usage: test_project=$(create_test_project)
 create_test_project() {
-    local test_dir=$(mktemp -d)
+    local test_dir; test_dir=$(mktemp -d)
     echo "$test_dir"
 }
 

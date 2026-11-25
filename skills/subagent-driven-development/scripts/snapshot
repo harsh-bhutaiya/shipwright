@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Record the working tree as a scratch commit under refs/shipwright/<label>
+# without touching the developer's index, stash, branch or history. The commit
+# holds HEAD plus every modified, deleted and untracked non-ignored file, and
+# never .shipwright/ (the SDD workspace, even in a repo that was never
+# onboarded and so has no exclude entry for it).
+#
+# Usage:
+#   snapshot [-C DIR] <label>             print refs/shipwright/<label>
+#   snapshot [-C DIR] --lane <label> [REF] add a detached scratch worktree at
+#                                          <repo>/.shipwright/work/lanes/<label>
+#                                          (REF default HEAD), print its path
+#   snapshot [-C DIR] --apply-lane <base-ref> <lane-ref>
+#                                         apply the lane's change (base to lane,
+#                                         binary-safe) to this working tree
+#   snapshot [-C DIR] --cleanup           remove every refs/shipwright/* ref and
+#                                          every scratch lane worktree
+# All plumbing lives here so a git guard sees one `bash .../snapshot` command.
+set -euo pipefail
+
+here=$(cd "$(dirname "$0")" && pwd)
+if [ "${1:-}" = "-C" ]; then
+  [ -d "${2:-}" ] || { echo "bad -C directory: ${2:-}" >&2; exit 2; }
+  cd "$2"
+  shift 2
+fi
+
+usage() { echo "usage: snapshot [-C DIR] <label> | --lane <label> [REF] | --apply-lane <base> <lane> | --cleanup" >&2; exit 2; }
+[ $# -ge 1 ] || usage
+
+repo=$("${BASH:-bash}" "$here/sdd-repo" --with-commit)
+lanes="$repo/.shipwright/work/lanes"
+
+valid_label() { case $1 in ''|-*|*[!A-Za-z0-9._-]*) echo "bad label: $1" >&2; exit 2;; esac; }
+
+case $1 in
+  --cleanup)
+    [ $# -eq 1 ] || usage
+    for ref in $(git -C "$repo" for-each-ref --format='%(refname)' refs/shipwright); do
+      git -C "$repo" update-ref -d "$ref"
+    done
+    # read -r per line: a repo path with spaces must not be word-split.
+    git -C "$repo" worktree list --porcelain | sed -n 's/^worktree //p' | while IFS= read -r w; do
+      case $w in "$lanes"/*) git -C "$repo" worktree remove --force "$w";; esac
+    done
+    git -C "$repo" worktree prune
+    rmdir "$lanes" 2>/dev/null || true
+    exit 0;;
+  --apply-lane)
+    [ $# -eq 3 ] || usage
+    { git -C "$repo" rev-parse --verify --quiet "$2" >/dev/null && git -C "$repo" rev-parse --verify --quiet "$3" >/dev/null; } \
+      || { echo "bad ref: $2 or $3" >&2; exit 2; }
+    git -C "$repo" diff --binary "$2" "$3" | git -C "$repo" apply
+    exit 0;;
+  --lane)
+    { [ $# -ge 2 ] && [ $# -le 3 ]; } || usage
+    valid_label "$2"
+    mkdir -p "$lanes"
+    [ -e "$lanes/.gitignore" ] || printf '*\n' > "$lanes/.gitignore"
+    git -C "$repo" worktree add --detach "$lanes/$2" "${3:-HEAD}" >/dev/null 2>&1 \
+      || { echo "cannot add lane $2 at ${3:-HEAD}" >&2; exit 1; }
+    echo "$lanes/$2"
+    exit 0;;
+esac
+
+[ $# -eq 1 ] || usage
+label=$1
+valid_label "$label"
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+GIT_INDEX_FILE=$tmp/index git -C "$repo" read-tree HEAD
+# -z keeps paths with spaces or newlines intact; the pathspec leaves .shipwright/ out.
+# Staged-only changes (git add, git rm) are invisible to ls-files against the index, so list them from the diff against HEAD too.
+{ git -C "$repo" ls-files -z -m -o -d --exclude-standard -- . ':(exclude).shipwright'
+  git -C "$repo" diff --cached --name-only --no-renames -z HEAD -- . ':(exclude).shipwright'; } \
+  | GIT_INDEX_FILE=$tmp/index git -C "$repo" update-index -z --add --remove --stdin
+tree=$(GIT_INDEX_FILE=$tmp/index git -C "$repo" write-tree)
+# Fixed identity: a scratch commit must not depend on the developer's user.name.
+commit=$(GIT_AUTHOR_NAME=shipwright GIT_AUTHOR_EMAIL=shipwright@localhost \
+  GIT_COMMITTER_NAME=shipwright GIT_COMMITTER_EMAIL=shipwright@localhost \
+  git -C "$repo" commit-tree "$tree" -p HEAD -m "shipwright snapshot $label")
+git -C "$repo" update-ref "refs/shipwright/$label" "$commit"
+echo "refs/shipwright/$label"

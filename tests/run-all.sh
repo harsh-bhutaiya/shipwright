@@ -10,4 +10,4 @@ while IFS= read -r t; do
     fi
 done < <(find tests -name 'test-*.sh' ! -name 'test-helpers.sh' | sort)
 rm -f /tmp/shipwright-test.$$
-[ "$failed" -eq 0 ] && echo "ALL PASS" || { echo "$failed FAILED"; exit 1; }
+if [ "$failed" -eq 0 ]; then echo "ALL PASS"; else echo "$failed FAILED"; exit 1; fi

@@ -19,6 +19,8 @@ Subagent (general-purpose):
 
     [Scene-setting: where this fits, dependencies, architectural context]
 
+    commit_push: [COMMIT_PUSH — `allowed`, or `not allowed`]
+
     ## Before You Begin
 
     If you have questions about:
@@ -35,7 +37,10 @@ Subagent (general-purpose):
     1. Implement exactly what the task specifies
     2. Write tests (following TDD if task says to)
     3. Verify implementation works
-    4. Commit your work
+    4. Commit your work only when commit_push above is `allowed`. Otherwise
+       run no `git add`, `git commit` or `git push`: leave the changes in the
+       working tree and report the files and a commit message (the task's
+       Checkpoint line names both)
     5. Self-review (see below)
     6. Report back
 
@@ -45,7 +50,7 @@ Subagent (general-purpose):
     It's always OK to pause and clarify. Don't guess or make assumptions.
 
     While iterating, run the focused test for what you're changing; run the
-    full suite once before committing, not after every edit.
+    full suite once before you commit or report, not after every edit.
 
     ## You Do Not Dispatch Subagents
 
@@ -140,7 +145,8 @@ Subagent (general-purpose):
     Then report back with ONLY (under 15 lines — the detail lives in the
     report file):
     - **Status:** DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
-    - Commits created (short SHA + subject)
+    - Commits created (short SHA + subject), or, when commit_push is not
+      `allowed`: the changed files and the commit message
     - One-line test summary (e.g. "14/14 passing, output pristine")
     - Your concerns, if any
     - The report file path
