@@ -7,14 +7,24 @@ description: Use when you have a spec or requirements for a multi-step task, bef
 
 ## Overview
 
-Write implementation plans for an engineer who has not seen this codebase or this spec. Assume they write idiomatic code in the project's language once they know the exact interface and the exact test, and that they will make a reasonable choice wherever the plan leaves one open. What they cannot know is what you decided: which files, which names and signatures, which values from the spec, which tests prove each task. Document those. Give them the whole plan as bite-sized tasks. DRY. YAGNI. TDD. Frequent commits.
+Write implementation plans for an engineer who has not seen this codebase or this spec. Assume they write idiomatic code in the project's language once they know the exact interface and the exact test, and that they will make a reasonable choice wherever the plan leaves one open. What they cannot know is what you decided: which files, which names and signatures, which values from the spec, which tests prove each task. Document those. Give them the whole plan as bite-sized tasks. DRY. YAGNI. TDD. Frequent commits or Checkpoints (see Commit or Checkpoint).
 
 **Announce at start:** "I'm using the writing-plans skill to create the implementation plan."
 
 **Context:** If working in an isolated worktree, it should have been created via the `shipwright:using-git-worktrees` skill at execution time.
 
-**Save plans to:** `docs/shipwright/plans/YYYY-MM-DD-<feature-name>.md`
+**Save plans to:** `<docs_dir>/plans/YYYY-MM-DD-<feature-name>.md`, where `<docs_dir>` is `"${CLAUDE_PLUGIN_ROOT}/scripts/shipwright-config" get docs_dir`. After saving, call `shipwright:publishing-docs` with the file (it does nothing unless `docs_mode` is `shared-tool`).
 - (User preferences for plan location override this default)
+
+## Settings
+
+Read these before writing; they shape the plan:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/shipwright-config" get plan_approval
+"${CLAUDE_PLUGIN_ROOT}/scripts/shipwright-config" get commit_push
+"${CLAUDE_PLUGIN_ROOT}/scripts/shipwright-config" get pr_line_cap
+```
 
 ## Scope Check
 
@@ -47,7 +57,48 @@ independently testable deliverable.
 - "Run it to make sure it fails" - step
 - "Implement the minimal code to make the test pass" - step
 - "Run the tests and make sure they pass" - step
-- "Commit" - step
+- "Commit" - step (only when `commit_push=allowed`; see Commit or Checkpoint)
+
+## Risky Tagging and Approval
+
+Every task carries its own line, exactly `Risky: none` or `Risky: <category>[, <category>]`. Categories are these 9, named as written:
+
+1. DB schema/migrations/backfills
+2. deleting or overwriting data or files outside the feature
+3. auth, permissions, secrets or security
+4. payments, billing or pricing
+5. a public API or contract change
+6. infra, deploy or CI config
+7. adding or upgrading dependencies
+8. anything irreversible or touching production
+9. the project's "do not change" areas
+
+Approval rule: when `plan_approval=auto` and every task says `Risky: none`, the plan proceeds without waiting for review. In every other case (`plan_approval=review`, or any task names a category) stop and ask the developer to review the plan, even under `auto`. Say which tasks are risky and why.
+
+## Commit or Checkpoint
+
+When `commit_push=allowed`, the last step of each task is a commit step. Otherwise (including unset) the task ends with a Checkpoint, and no step runs `git add`, `git commit` or `git push`:
+
+```markdown
+- [ ] **Checkpoint:** files `<path>`, `<path>`; commit message `<message in the project's format>`
+```
+
+## Branch Stack
+
+When `pr_line_cap` is set, cut the tasks into a stack of branches so each branch stays under the cap of non-test lines. Keep one branch otherwise. Rules (spec §4.3):
+
+- No file appears in two branches.
+- Each branch passes the tests on its own, in stack order.
+
+Record the stack under `## Branch stack` in the plan, one line per branch: `- <branch-name>: tasks <N-M>; based on <base branch>`.
+
+## Acceptance Checklist
+
+Every plan has a section headed exactly `## Acceptance checklist`, one line per case decided in the spec, saying how it is verified (spec §2.10 step 1):
+
+```markdown
+- [ ] <case> — verify: <test | live run | log check> — <how>
+```
 
 ## Plan Document Header
 
@@ -87,12 +138,22 @@ you. Then, for each line, add the test that pins it to the task that
 owns the code, in that task's own step style.]
 
 ---
+
+## Branch stack
+
+[One line per branch, in stack order: `- <branch-name>: tasks <N-M>; based on <base branch>`. Without `pr_line_cap`, one line for the single branch: `- <branch-name>: tasks 1-N; based on <base branch>`.]
+
+## Acceptance checklist
+
+[One line per decided case.]
 ```
 
 ## Task Structure
 
 ````markdown
 ### Task N: [Component Name]
+
+Risky: none
 
 **Files:**
 - Create: `exact/path/to/file.py`
@@ -129,12 +190,14 @@ algorithm they do not determine.
 Run: `pytest tests/path/test.py::test_name -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Commit** (when `commit_push=allowed`)
 
 ```bash
 git add tests/path/test.py src/path/file.py
 git commit -m "feat: add specific feature"
 ```
+
+When `commit_push` is not `allowed`, replace Step 5 with the Checkpoint line (see Commit or Checkpoint).
 ````
 
 ## What a Step Contains
@@ -172,30 +235,41 @@ After writing the complete plan, look at the spec with fresh eyes and check the 
 
 **4. Review Focus:** For each input class or failure mode the spec implies, is there a task whose tests exercise it? The five uncovered ones most likely to bite a person go in the Review Focus section, and each line there gets its test added to the owning task. An empty section means you checked and found none, not that you skipped the check.
 
-**5. Proportion:** Compare the plan's length to the spec's. A plan several times longer than the spec it implements is a transcript of the program, not a plan. If code blocks are most of the document, replace bodies with signatures, test names and assertions, and check that each step is still unambiguous.
+**5. Risk, checklist and stack:** Does every task have a `Risky:` line? Does every decided case have an acceptance line? With `pr_line_cap` set, does any file appear in two branches?
+
+**6. Proportion:** Compare the plan's length to the spec's. A plan several times longer than the spec it implements is a transcript of the program, not a plan. If code blocks are most of the document, replace bodies with signatures, test names and assertions, and check that each step is still unambiguous.
 
 If you find issues, fix them inline. No need to re-review — just fix and move on. If you find a spec requirement with no task, add the task.
 
 ## Execution Handoff
 
 After saving and self-reviewing the plan, link it for your human partner
-to read. If they have already explicitly supplied an execution method, ask
-them to review the plan and confirm it captures what they want; wait for that
-review before implementation, then use the preserved method. Otherwise, ask
-them to review the plan and choose an execution method before implementation.
+to read. Then apply the approval rule (Risky Tagging and Approval).
 
-**When no execution method has already been supplied:**
+**When the approval rule says proceed** (`plan_approval=auto` and every task
+says `Risky: none`): do not wait for a review. Say in one line that the plan
+is auto-approved, name the execution method (the one they supplied, else your
+recommendation below, with its reason) and start it.
 
-**"Plan complete and saved to `docs/shipwright/plans/<filename>.md`. Please review the plan. Which execution approach would you prefer?**
+**In every other case,** the plan waits for their review. If they have
+already explicitly supplied an execution method, ask them to review the plan
+and confirm it captures what they want; wait for that review before
+implementation, then use the preserved method. Otherwise, ask them to review
+the plan and choose an execution method before implementation. Under `auto`,
+also say which tasks are risky and why.
+
+**When the plan waits for review and no execution method has already been supplied:**
+
+**"Plan complete and saved to `<docs_dir>/plans/<filename>.md`. Please review the plan. Which execution approach would you prefer?**
 
 - **Subagent-driven** - A fresh subagent implements each task and a fresh reviewer checks it before the next one starts, then a whole-branch review at the end. Most thorough; costs a fresh context per task and per review.
 - **Native** - I implement every task myself in this session, the way this harness runs work, then one fresh reviewer on the most capable model checks the whole branch. Cheapest and fastest; no independent review until the end. Runs well with a mid-tier session model, since the plan carries the design.
 
 **For this plan I recommend <one of the two>, because <one sentence from the plan: how much the tasks depend on each other's interfaces, how many there are, what a shipped mistake would cost>. Does the plan capture what you want, and which approach should we use?"**
 
-**When an execution method has already been supplied:**
+**When the plan waits for review and an execution method has already been supplied:**
 
-**"Plan complete and saved to `docs/shipwright/plans/<filename>.md`. Please review the plan. Does it capture what you want?"**
+**"Plan complete and saved to `<docs_dir>/plans/<filename>.md`. Please review the plan. Does it capture what you want?"**
 
 **If Subagent-driven chosen:**
 - **REQUIRED SUB-SKILL:** Use shipwright:subagent-driven-development

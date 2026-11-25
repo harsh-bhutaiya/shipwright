@@ -1,6 +1,6 @@
 # Shipwright
 
-Shipwright is a Claude Code plugin for a team development workflow that works in any project and tech stack. It takes a feature from requirements to a plan, a build and a PR hand-over, and has a structured flow for investigating bugs. Version 0.1.0 is Milestone 1 (see "What's in v0.1").
+Shipwright is a Claude Code plugin for a team development workflow that works in any project and tech stack. It takes a feature from requirements to a plan, a build and a PR hand-over, and has a structured flow for investigating bugs. Version 0.2.0 adds the full feature flow, bug investigation and a verification loop (see "What's in v0.2").
 
 Shipwright is MIT licensed (see `LICENSE`). It is a fork of [superpowers](https://github.com/obra/superpowers) 7.0.2 by Jesse Vincent (MIT), whose copyright notice `LICENSE` keeps. See `UPSTREAM.md` for what was taken and what changed.
 
@@ -46,10 +46,10 @@ Settings are plain `key=value` files in `.shipwright/`. Read and write them with
 |---|---|---|
 | `docs_mode` | empty (not onboarded) | Where docs live: `in-repo`, `local` or `shared-tool` |
 | `docs_dir` | `docs` | Docs folder, relative to the repo root |
-| `wiki_connector` | empty | Name of the MCP connector used when `docs_mode` is `shared-tool` (recorded only in v0.1; the `shared-tool` docs mode arrives with v0.2) |
+| `wiki_connector` | empty | Name of the MCP connector used when `docs_mode` is `shared-tool` |
 | `wiki_location` | empty | Space or folder in that tool |
-| `plan_approval` | `review` | `review`: a human approves plans. `auto`: plans are auto-approved unless they touch a risky category (recorded only in v0.1; `auto` is not acted on until v0.2) |
-| `pr_line_cap` | empty (no cap) | Maximum changed lines per PR; a positive integer |
+| `plan_approval` | `review` | `review`: a human approves plans. `auto`: plans are auto-approved unless they touch a risky category, which always stops for a human |
+| `pr_line_cap` | empty (no cap) | Maximum non-test lines per PR (branch); a positive integer |
 | `observability` | empty | Detected observability platform, or `none` |
 
 `developer.conf` (per developer):
@@ -64,7 +64,7 @@ Which file is committed:
 - `developer.conf` is always local and git-excluded. It carries a person's choices, never the team's.
 - `project.conf` is committed only when `docs_mode` is `in-repo`. In the other modes it is git-excluded too.
 - `.shipwright/work/` (working files) is always local and git-excluded.
-- In `local` mode the docs folder is git-excluded as well.
+- In `local` and `shared-tool` modes the docs folder is git-excluded as well.
 
 ## Commit consent
 
@@ -109,6 +109,7 @@ The guard is a guardrail against mistakes, not a sandbox. A determined or obfusc
 - A script written to a file and then run: the hook sees only the call.
 - Variable indirection (`G=git; $G commit`) and globs that name git (`g?t`).
 - Aliases do not bypass the guard: unknown subcommands, including aliases like `git ci`, are denied when consent is off.
+- A shell alias defined in the same command is not detected (`shopt -s expand_aliases`, then `alias g='git branch'`, then `g new`, on separate lines).
 - A symlink to the real index (`ln -s .git/index /tmp/i`, then `GIT_INDEX_FILE=/tmp/i`).
 - `--output` passed through shell expansion or `xargs`.
 - Dashed `git-*` binaries reached through a PATH override, and `exec -a`.
@@ -116,18 +117,28 @@ The guard is a guardrail against mistakes, not a sandbox. A determined or obfusc
 - Program-running settings already in the developer's own git config (`diff.external`, `core.pager`): `-c` is blocked, existing config is not.
 - Windows: untested. 8.3 short names are not handled, and messages show Git Bash paths (`/c/...`).
 - Very large commands (several MB) time out.
+- A harmless non-git command with any word after a path ending in `/git`, such as `ls /opt/homebrew/bin/git 2>&1` or `stat /usr/bin/git >/dev/null`, is denied (fails safe).
+- Exclude lines written by v0.1 carry no marker, so `exclude` does not remove them. A repo onboarded under v0.1 that switches to `in-repo` must delete `/<docs_dir>/` (default `/docs/`) and `/.shipwright/project.conf` from `.git/info/exclude` by hand.
 - Only `git` run through Bash is checked. Claude Code's own worktree tool, `gh` (for example `gh pr checkout`, `gh pr merge`, `gh repo sync`) and MCP git/GitHub tools are not guarded.
 - If `run-hook.cmd` finds no bash (Windows without Git Bash), the guard does not run at all (fails open).
 - Fail-closed hooks (`onFailure: block`) need Claude Code v2.1.295 or later.
 - False positives (the guard errs on the side of denying): `git -c ... diff`, `cat .git/HEAD`, `GIT_PAGER=cat git log`, `$` or `{` in grep patterns, `git branch -av`, `git tag -l`, `git stash list`, `git config <key>` reads, and text such as `echo "git commit"`.
 
-## What's in v0.1 and what's coming
+## What's in v0.2
 
-v0.1.0 ships: the forked skills, `scripts/shipwright-config`, the `guard-git` hook, the `session-start` hook and the onboarding skill.
+Feature flow:
 
-Coming in v0.2 and later: the feature-flow changes, the docs storage modes, the verification loop, bug investigation and PR write-ups.
+- `brainstorming` applies the standards ladder (project files, then existing code patterns, then industry standards, flagging poorly managed code) and pushes back on requests that contradict recorded decisions.
+- `writing-plans` marks each task `Risky:` (or `Risky: none`), applies the approval rule, adds a Checkpoint per task when commits are not allowed, and carries `## Branch stack` and `## Acceptance checklist` sections after the header, before the tasks.
+- `subagent-driven-development` reviews private snapshots (`scripts/snapshot`, with `--lane`, `--apply-lane` and `--cleanup`) instead of commits, and uses a split stop rule: stop for what changes the build or is risky, decide and record the rest.
+- `publishing-docs` copies specs, plans and write-ups to the wiki when `docs_mode` is `shared-tool` (one way, local file is the source).
+- `finishing-a-development-branch` hands over files and commit messages per branch (one branch unless `pr_line_cap` splits the work into a stack) when commit consent is off, with PR text from `writing-pr-descriptions`.
 
-In v0.1 the forked skills may still tell Claude to commit. The guard blocks those calls unless consent is on, and the session-start guidance tells the agent to leave changes in the working tree and hand over commit messages instead.
+Bug flow: `investigating-issues` finds the cause before any fix and writes up the finding in `<docs_dir>/investigations/`, describing data by its shape, never real values. It checks observability connectors and the database (through a read-only connector) in the main session, and hands code, logs and reproduction to a read-only `investigator` agent.
+
+Verification loop: `verifying-work` runs the plan's whole acceptance checklist against the real thing, fixes and re-checks, and escalates with evidence after 3 failed attempts on the same problem.
+
+Some forked skills may still tell Claude to commit. The guard blocks those calls unless consent is on, and the session-start guidance tells the agent to leave changes in the working tree and hand over commit messages instead.
 
 ## Developing Shipwright
 

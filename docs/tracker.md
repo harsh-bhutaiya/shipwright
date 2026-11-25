@@ -4,8 +4,8 @@ The single place to see where the Shipwright build stands: decisions, open quest
 
 ## Status
 
-**Phase:** v0.1.0 released (Milestone 1); building v0.2 (Tasks 6-13)
-**Next:** Plan Tasks 6-13 (repo is public at `harsh-bhutaiya/shipwright`)
+**Phase:** v0.2.0 built (Tasks 6-13); v0.1.0 is public
+**Next:** The owner commits and opens the PRs, then "Try it on a real project"
 
 ## Decisions
 
@@ -51,7 +51,7 @@ Answer one at a time, in this order. Full context is in `docs/superpowers/specs/
 | Q5a | What counts as "risky"? Confirm or correct the proposed list in design §2.6 | ✅ Answered: the 9-item list is confirmed |
 | Q6 | Commit permission default: allowed or not, per project or per developer? | ✅ Answered: per project, not allowed by default (see Decisions; design §2.7) |
 | Q7 | Which observability and log tools does the team use, so we know which MCP servers to support first? | ✅ Answered: detected per project, ask the user only if none is found (see Decisions; design §2.8) |
-| Q8 | superpowers: thin plugin on top, fork it, or build from scratch? | ✅ Answered: B, fork (see Decisions; design §4) |
+| Q8 | superpowers — thin plugin on top, fork it, or build from scratch? | ✅ Answered: B, fork (see Decisions; design §4) |
 | Q9 | With commits not allowed, may Shipwright use **private, throwaway git state** that the developer never sees (a detached worktree, hidden scratch commits deleted at handover)? | ✅ Answered: yes; the rule covers the final commits only (design §2.7) |
 | Q10 | During the build, when something the plan doesn't settle comes up, does Shipwright **stop and ask**, or **decide, record it and report at the end**? | ✅ Answered: split (design §2.9) |
 | Q11 | Does "never write to a database" cover **every** database, or only real and shared ones (production, staging, shared dev)? May Shipwright use the project's own DB credentials from env files? | ✅ Answered: real and shared databases only; no `.env` credentials for them (design §4.2) |
@@ -64,7 +64,7 @@ Answer one at a time, in this order. Full context is in `docs/superpowers/specs/
 - [x] Open questions Q1-Q8 answered
 - [x] Design approved (2026-11-24)
 - [x] Implementation plan written: `docs/superpowers/plans/2026-11-24-shipwright.md`, 13 tasks in 4 milestones
-- [ ] Build (partially done: v0.1.0 = Milestone 1 shipped 2026-11-25; Tasks 6-13 in v0.2+)
+- [x] Build (v0.1.0 shipped 2026-11-25; v0.2.0 built, Tasks 6-13)
 - [ ] Try it on a real project
 - [ ] Team rollout
 
@@ -102,3 +102,4 @@ Answer one at a time, in this order. Full context is in `docs/superpowers/specs/
   - Wrote the README (install, settings, consent, guard and its known limits), CHANGELOG and CLAUDE.md note.
   - Decided to release v0.1.0 as Milestone 1 only; Tasks 6-13 move to v0.2+.
   - Published the repo publicly at `harsh-bhutaiya/shipwright` and added the `protect-main` ruleset, secret scanning, push protection and private vulnerability reporting.
+  - v0.2.0 built (Tasks 6-13).

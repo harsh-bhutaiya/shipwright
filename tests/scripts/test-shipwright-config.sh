@@ -92,4 +92,29 @@ for bad in . /abs; do
     rm -rf "$RV"
 done
 
-[ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
+# shared-tool keeps the local master docs out of git too, with the same tracked-files guard
+RS=$(repo s); "$CFG" -C "$RS" set docs_mode shared-tool; mkdir "$RS/docs"; echo x > "$RS/docs/a.md"
+"$CFG" -C "$RS" exclude
+check "shared-tool: untracked docs excluded" "1" "$(grep -cxF '/docs/' "$RS/.git/info/exclude")"
+RST=$(repo st); "$CFG" -C "$RST" set docs_mode shared-tool; mkdir "$RST/docs"; echo x > "$RST/docs/a.md"
+git -C "$RST" add docs/a.md
+err=$("$CFG" -C "$RST" exclude 2>&1 >/dev/null)
+check "shared-tool: tracked docs not excluded" "0" "$(grep -cxF '/docs/' "$RST/.git/info/exclude")"
+check "shared-tool: tracked docs stderr" "shipwright-config: not excluding docs/ because it has tracked files; Shipwright's docs will be visible to git there" "$err"
+
+# exclude drops its own lines that the current mode no longer needs, and only its own
+RM=$(repo m); X="$RM/.git/info/exclude"; mkdir -p "$RM/.git/info"; printf '/mine/\n' >> "$X"
+"$CFG" -C "$RM" set docs_mode shared-tool; "$CFG" -C "$RM" exclude
+printf '/build/\n/.shipwright/work/\n' >> "$X"
+"$CFG" -C "$RM" set docs_mode in-repo; "$CFG" -C "$RM" exclude
+git -C "$RM" check-ignore -q docs/specs/x.md; check "shared-tool -> in-repo: docs no longer ignored" "1" "$?"
+git -C "$RM" check-ignore -q .shipwright/project.conf; check "shared-tool -> in-repo: project.conf no longer ignored" "1" "$?"
+check "mode switch: developer lines kept" "/mine/ /build/" "$(grep -xF -e /mine/ -e /build/ "$X" | tr '\n' ' ' | sed 's/ $//')"
+check "mode switch: developer's copy of a Shipwright line kept" "2" "$(grep -cxF '/.shipwright/work/' "$X")"
+git -C "$RM" check-ignore -q .shipwright/developer.conf; check "mode switch: developer.conf still ignored" "0" "$?"
+"$CFG" -C "$RM" set docs_mode local; "$CFG" -C "$RM" set docs_dir notes; "$CFG" -C "$RM" exclude
+"$CFG" -C "$RM" set docs_dir notes2; "$CFG" -C "$RM" exclude
+check "docs_dir change: old docs line dropped" "0" "$(grep -cxF '/notes/' "$X")"
+check "docs_dir change: new docs line added" "1" "$(grep -cxF '/notes2/' "$X")"
+
+if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

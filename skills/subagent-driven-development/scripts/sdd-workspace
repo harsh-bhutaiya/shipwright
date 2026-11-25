@@ -51,7 +51,7 @@ plan=$1
 [ -f "$plan" ] || { echo "no such plan file: $plan" >&2; exit 2; }
 
 slug=$(basename "$plan" .md)
-[ -n "$slug" ] && [ "$slug" != "." ] && [ "$slug" != ".." ] \
+{ [ -n "$slug" ] && [ "$slug" != "." ] && [ "$slug" != ".." ]; } \
   || { echo "cannot derive a workspace name from: $plan" >&2; exit 2; }
 
 # Physical path, spelled the way pwd -P spells the plan path below: on Git

@@ -1,7 +1,7 @@
 {
   "name": "shipwright",
-  "version": "0.1.0",
-  "description": "Team development workflow for Claude Code, a fork of superpowers with per-project settings and a git guard that blocks commits unless the developer consents.",
+  "version": "0.2.0",
+  "description": "Team development workflow for Claude Code, a fork of superpowers, with feature flow, bug investigation, a verification loop, per-project settings and a git guard that blocks commits unless the developer consents.",
   "author": {
     "name": "Harsh Bhutaiya"
   },

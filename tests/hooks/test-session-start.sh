@@ -25,12 +25,14 @@ has "$out" "$NOT_ONBOARDED" ; check "fresh repo: not-onboarded line" $?
 has "$out" '## The Rule' ; check "skill text injected" $?
 has "$out" "Commit consent is off for this developer. Skip other skills' steps that commit, push, merge, stash or create or switch branches" ; check "consent off: guidance injected" $?
 has "$out" "A Shipwright denial is final: do not retry it in another form." ; check "consent off: guidance ends with denial rule" $?
-[ "${#out}" -lt 10000 ]; check "output under 10000 chars (${#out})" $?
+[ "${#out}" -lt 10000 ]
+# shellcheck disable=SC2319  # check takes the condition's status on purpose
+check "output under 10000 chars (${#out})" $?
 
 bash "$ROOT/scripts/shipwright-config" -C "$REPO" set docs_mode local >/dev/null
 out=$(run "{\"cwd\":\"$REPO\"}")
 has "$out" 'docs_mode=local' ; check "onboarded: docs_mode shown" $?
-has "$out" "$NOT_ONBOARDED" ; [ $? -ne 0 ]; check "onboarded: not-onboarded line omitted" $?
+! has "$out" "$NOT_ONBOARDED" ; check "onboarded: not-onboarded line omitted" $?
 
 out=$(printf '' | CLAUDE_PROJECT_DIR="$REPO" CLAUDE_PLUGIN_ROOT="$ROOT" "$HOOK" session-start)
 has "$out" 'docs_mode=local' ; check "falls back to CLAUDE_PROJECT_DIR" $?
@@ -44,10 +46,10 @@ has "$out" 'docs_mode=local' ; check "empty PATH still works" $?
 
 AL="$T/al"; git init -q "$AL"; bash "$ROOT/scripts/shipwright-config" -C "$AL" set commit_push allowed >/dev/null
 out=$(run "{\"cwd\":\"$AL\"}")
-has "$out" "Commit consent is off" ; [ $? -ne 0 ]; check "consent allowed: no guidance" $?
+! has "$out" "Commit consent is off" ; check "consent allowed: no guidance" $?
 git -C "$AL" -c user.email=t@t -c user.name=t commit -q --allow-empty -m i
 git -C "$AL" worktree add -q --detach "$T/alwt"
 out=$(run "{\"cwd\":\"$T/alwt\"}")
 has "$out" 'commit_push=allowed' ; check "linked worktree reads main checkout settings" $?
 
-[ "$fails" -eq 0 ] && echo "STATUS: PASSED" || { echo "STATUS: FAILED ($fails)"; exit 1; }
+if [ "$fails" -eq 0 ]; then echo "STATUS: PASSED"; else echo "STATUS: FAILED ($fails)"; exit 1; fi

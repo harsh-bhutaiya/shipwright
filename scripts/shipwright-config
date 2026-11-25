@@ -80,15 +80,47 @@ set_value() { # key value: rewrite the file, replacing every old line for the ke
     mv "$tmp" "$f" || { rm -f "$tmp"; die "write failed: $f"; }
 }
 
-add_exclude() { # line: append to exclude once
+# Marks the line after it as Shipwright's, so a later exclude can drop it and leave the developer's own lines alone.
+MARK="# shipwright-config exclude manages the next line"
+
+add_exclude() { # exclude-file line: record it as wanted, append it once after MARK
     local ex="$1" line="$2"
+    want="$want$line"$'\n'
     grep -qxF -- "$line" "$ex" 2>/dev/null && return 0
     [ -s "$ex" ] && [ -n "$(tail -c1 "$ex")" ] && echo >> "$ex"
-    echo "$line" >> "$ex"
+    printf '%s\n%s\n' "$MARK" "$line" >> "$ex"
+}
+
+drop_stale() { # exclude-file: remove each MARK-ed line this run did not want, with its MARK
+    local ex="$1" line held='' out='' dropped='' tmp
+    grep -qxF -- "$MARK" "$ex" 2>/dev/null || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [ "$line" = "$MARK" ]; then held=1; continue; fi
+        if [ -n "$held" ]; then
+            held=''
+            case $'\n'"$want" in *$'\n'"$line"$'\n'*) out="$out$MARK"$'\n';; *) dropped=1; continue;; esac
+        fi
+        out="$out$line"$'\n'
+    done < "$ex"
+    [ -n "$dropped" ] || return 0
+    tmp=$(mktemp "$ex.XXXXXX") || die "cannot write $ex"
+    { printf '%s' "$out" > "$tmp" && mv "$tmp" "$ex"; } || { rm -f "$tmp"; die "write failed: $ex"; }
+}
+
+exclude_docs() { # exclude-file: the docs_dir line, unless docs_dir is unsafe or has tracked files
+    local ddir
+    ddir=$(get_value docs_dir)
+    case "$ddir" in ""|.|./|/*) return 0;; esac
+    ddir="${ddir%/}"
+    if [ -n "$(git -C "$root" ls-files -- "$ddir" 2>/dev/null)" ]; then
+        echo "shipwright-config: not excluding $ddir/ because it has tracked files; Shipwright's docs will be visible to git there" >&2
+        return 0
+    fi
+    add_exclude "$1" "/$ddir/"
 }
 
 do_exclude() {
-    local gd ex mode ddir
+    local gd ex mode want=''
     gd=$(git -C "$dir" rev-parse --git-common-dir 2>/dev/null) || return 0
     case "$gd" in /*) ;; *) gd="$(cd "$dir" && pwd)/$gd";; esac
     mkdir -p "$gd/info"; ex="$gd/info/exclude"
@@ -96,16 +128,8 @@ do_exclude() {
     add_exclude "$ex" "/.shipwright/work/"
     mode=$(raw_value docs_mode)
     [ "$mode" = "in-repo" ] || add_exclude "$ex" "/.shipwright/project.conf"
-    if [ "$mode" = "local" ]; then
-        ddir=$(get_value docs_dir)
-        case "$ddir" in ""|.|./|/*) return 0;; esac
-        ddir="${ddir%/}"
-        if [ -n "$(git -C "$root" ls-files -- "$ddir" 2>/dev/null)" ]; then
-            echo "shipwright-config: not excluding $ddir/ because it has tracked files; Shipwright's docs will be visible to git there" >&2
-            return 0
-        fi
-        add_exclude "$ex" "/$ddir/"
-    fi
+    if [ "$mode" = "local" ] || [ "$mode" = "shared-tool" ]; then exclude_docs "$ex"; fi
+    drop_stale "$ex"
 }
 
 case "$1" in

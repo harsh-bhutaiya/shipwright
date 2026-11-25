@@ -29,6 +29,10 @@ Use for ANY technical issue:
 - Build failures
 - Integration issues
 
+**Production bugs:** a reported issue in an existing feature (something that used to work, often in production) starts with `shipwright:investigating-issues`, unless that skill sent you here for the root cause.
+- **Databases:** real or shared databases (production, staging, shared dev) are read-only, reached only through a read-only user or connector the developer grants; local and test databases may be written to.
+- **`.env`:** never open, cat or grep the values in `.env*` or credential files, and never run the app, its tests or scripts against a real or shared database with app credentials.
+
 **Use this ESPECIALLY when:**
 - Under time pressure (emergencies make guessing tempting)
 - "Just one quick fix" seems obvious
