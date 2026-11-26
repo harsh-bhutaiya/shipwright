@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `skills/investigating-issues`: always dispatches the read-only `shipwright:investigator` for code, logs and reproduction, even in a small repo. An eval showed it skipped the agent on small repos 4 times out of 6.
+- Evals `plan-auto-proceeds` (an auto-approved plan with no risky task starts the build on its own), `investigate-dispatches-investigator` (the bug flow dispatches the investigator) and `finish-allowed-commits` (with commit consent on, finishing commits the work and the spec summary, merges locally and does not push).
+
 ## 0.2.1 — 2026-11-25
 
 - `scripts/shipwright-config exclude`: each marker now names the line it manages. A marker whose line was hand-deleted is dropped without taking the developer's next line with it, and v0.2.0's markers are rewritten in the new form.
