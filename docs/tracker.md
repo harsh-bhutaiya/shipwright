@@ -106,3 +106,5 @@ Answer one at a time, in this order. Full context is in `docs/superpowers/specs/
   - v0.2.0 built (Tasks 6-13).
   - Added CI: tests on Ubuntu and macOS (bash 3.2), ShellCheck 0.10.0, and a PR results comment.
   - Fixed `exclude` claiming a developer line under an orphaned marker and resetting the exclude file to 0600; the handover now uses `git checkout -b`. Released as v0.2.1.
+- **2026-11-26:**
+  - Added evals for auto-approved plans and investigator dispatch; the investigating-issues skill now always dispatches the investigator.

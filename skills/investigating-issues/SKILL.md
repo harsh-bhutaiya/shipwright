@@ -18,7 +18,7 @@ Use `shipwright:systematic-debugging` for the root-cause discipline. No fix is p
 
 Connector steps stay in this session: check observability through its MCP connector (step 1) and read the database through the developer's read-only connector (step 5) yourself, read-only. A subagent cannot see MCP connectors.
 
-The `shipwright:investigator` agent is read-only and gathers the rest: code, config, logs (step 2) and reproduction (step 3), plus observability that does not need a connector (SDKs, config). It is undocumented whether a skill can dispatch a plugin agent. Try it. If it cannot be dispatched, dispatch a general-purpose subagent and give it the full text of `agents/investigator.md` as its instructions. If no subagent tool exists, do the steps yourself under the same rules.
+The `shipwright:investigator` agent is read-only and gathers the rest: code, config, logs (step 2) and reproduction (step 3), plus observability that does not need a connector (SDKs, config). Always dispatch it for this work, however small the repo: its tool limits are what keep the investigation read-only, so do not read the code and logs yourself instead. Dispatch it with the subagent tool and `subagent_type: "shipwright:investigator"`. Only if that fails, dispatch a general-purpose subagent and give it the full text of `agents/investigator.md` as its instructions. If no subagent tool exists, do the steps yourself under the same rules.
 
 ## The flow
 
