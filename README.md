@@ -150,4 +150,12 @@ bash tests/run-all.sh
 
 CI runs these tests on Ubuntu and on macOS's bash 3.2, and runs ShellCheck 0.10.0, on every pull request. It posts the results as a comment on the PR.
 
+Run the behaviour evals (real Claude runs, so they cost money; CI does not run them):
+
+```bash
+claude plugin eval . --runs 1 --ablation none --no-publish --trust-plugin --scaffold --allow-tools Bash Edit Write
+```
+
+On macOS, install a git that is not Apple's Xcode shim first (`brew install git`): the eval sandbox blocks the shim, so every case that runs git fails without it.
+
 Develop with the Shipwright plugin disabled in this repo. The guard and its self-protection rules trip on Shipwright's own sources.
