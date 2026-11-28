@@ -1,0 +1,4 @@
+schema_version: "1.0"
+name: ai-written-choice-wins
+context:
+  scaffold_script: scaffold.sh

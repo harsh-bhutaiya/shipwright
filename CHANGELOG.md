@@ -1,7 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-11-28
 
+- `skills/ai-engineering`: a head skill for projects that call LLMs. It names the `ai-*` skill for each step and task, and holds their shared rules and the rule marks (`[security]`, `[reliability]`, `[practice]`).
+- 16 `ai-*` topic skills: architecture decisions, LLM calls, tool use, agents, context management, RAG, prompt engineering, evaluation, testing, observability, cost and latency, prompt injection, security and privacy, guardrails, model lifecycle and UX. Each has Rules, Ask the developer, Checks and Related skills.
+- `skills/using-shipwright`: points to `shipwright:ai-engineering` in projects that call LLMs.
+- `tests/skills/test-ai-skills.sh`: checks the 17 AI skills' frontmatter, descriptions, sections, rule marks, cross-references and length, with a self-test against fixtures.
+- Evals `ai-new-call-gets-timeout`, `ai-written-choice-wins`, `ai-tool-result-size-asked` and `ai-skills-quiet-elsewhere`.
 - `skills/investigating-issues`: always dispatches the read-only `shipwright:investigator` for code, logs and reproduction, even in a small repo. An eval showed it skipped the agent on small repos 4 times out of 6.
 - Evals `plan-auto-proceeds` (an auto-approved plan with no risky task starts the build on its own), `investigate-dispatches-investigator` (the bug flow dispatches the investigator) and `finish-allowed-commits` (with commit consent on, finishing commits the work and the spec summary, merges locally and does not push).
 

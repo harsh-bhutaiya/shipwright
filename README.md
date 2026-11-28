@@ -1,6 +1,6 @@
 # Shipwright
 
-Shipwright is a Claude Code plugin for a team development workflow that works in any project and tech stack. It takes a feature from requirements to a plan, a build and a PR hand-over, and has a structured flow for investigating bugs. Version 0.2.0 adds the full feature flow, bug investigation and a verification loop (see "What's in v0.2").
+Shipwright is a Claude Code plugin for a team development workflow that works in any project and tech stack. It takes a feature from requirements to a plan, a build and a PR hand-over, and has a structured flow for investigating bugs. Version 0.2.0 adds the full feature flow, bug investigation and a verification loop (see "What's in v0.2"). Version 0.3.0 adds AI-engineering skills for projects that call LLMs (see "What's in v0.3").
 
 Shipwright is MIT licensed (see `LICENSE`). It is a fork of [superpowers](https://github.com/obra/superpowers) 7.0.2 by Jesse Vincent (MIT), whose copyright notice `LICENSE` keeps. See `UPSTREAM.md` for what was taken and what changed.
 
@@ -139,6 +139,37 @@ Bug flow: `investigating-issues` finds the cause before any fix and writes up th
 Verification loop: `verifying-work` runs the plan's whole acceptance checklist against the real thing, fixes and re-checks, and escalates with evidence after 3 failed attempts on the same problem.
 
 Some forked skills may still tell Claude to commit. The guard blocks those calls unless consent is on, and the session-start guidance tells the agent to leave changes in the working tree and hand over commit messages instead.
+
+## What's in v0.3
+
+AI-engineering skills, for projects that call LLMs. They assume no model provider, SDK, eval framework or tracing platform. In other projects they stay quiet.
+
+`ai-engineering` is the head skill. It says which topic skill applies at each step (brainstorm, plan, TDD, review, verify, investigate) and for each kind of task. It holds the rules they share:
+
+- design choices follow the project, and are asked of the developer where the project has not chosen;
+- `[security]` and `[reliability]` rules hold for new code; a choice the project has written down beats a `[reliability]` rule, never a `[security]` rule;
+- existing code that breaks a rule is flagged once and not rewritten unless asked.
+
+Every topic skill invokes the head skill first, and has Rules, Ask the developer, Checks and Related skills:
+
+- `ai-architecture-decisions`: whether to use an LLM, and single call vs workflow vs agent.
+- `ai-llm-calls`: provider abstraction, errors and retries, limits, streaming, structured output.
+- `ai-tool-use`: tool design, many tools, parallel calls, result size, MCP.
+- `ai-agents`: loops, budgets, state, memory, multi-agent and subagent rules.
+- `ai-context-management`: the context budget, ordering, history, isolation.
+- `ai-rag`: ingestion, chunking, embeddings, search, access control, grounding.
+- `ai-prompt-engineering`: prompt structure, examples, prompts as code.
+- `ai-evaluation`: metrics, datasets, graders, N runs, integrity.
+- `ai-testing`: mocks, recorded fixtures, fault injection; testing vs eval.
+- `ai-observability`: what to trace and log, personal data in traces, alerts.
+- `ai-cost-latency`: measuring cost, routing, caching, budgets, latency.
+- `ai-prompt-injection`: direct and indirect injection, defences, exfiltration.
+- `ai-security-privacy`: secrets, untrusted output, authorization, privacy.
+- `ai-guardrails`: moderation, grounding checks, refusals, human hand-off.
+- `ai-model-lifecycle`: choosing, pinning and migrating models; release and rollout.
+- `ai-ux`: streaming display, citations, feedback controls, AI disclosure.
+
+Changes to Shipwright's own flow for AI projects (onboarding detection, AI risky categories, an `eval` check type, LLM bug reproduction) come in v0.4.0.
 
 ## Developing Shipwright
 
