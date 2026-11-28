@@ -29,6 +29,7 @@ When multiple skills apply, process skills come first — they set the approach,
 
 - "Let's build X" → shipwright:brainstorming first, then implementation skills.
 - "Fix this bug" → shipwright:systematic-debugging first, then domain skills.
+- In a project that calls LLMs from its own code (it imports a model SDK or client, keeps model IDs or prompt files for its own model calls, or reads a model provider's key from an env var; files that configure a coding assistant, such as CLAUDE.md or agent definitions, do not count): after the process skill, `shipwright:ai-engineering` names the `ai-*` skills for the task.
 
 ## Red Flags
 
